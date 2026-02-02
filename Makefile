@@ -1,4 +1,4 @@
-.PHONY: help install serve server test build up down logs health shell clean
+.PHONY: help install serve server tts test build up down logs health shell clean
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -12,6 +12,7 @@ help:
 	@echo "  make install         - Install deps (uv sync)"
 	@echo "  make serve           - Run server locally (Ctrl+C to stop)"
 	@echo "  make server stop     - Kill local server"
+	@echo "  make tts text=\"...\"  - Generate speech (uses defaults from .env)"
 	@echo "  make test            - Test single TTS generation"
 	@echo "  make test batch      - Test batch TTS generation"
 	@echo ""
@@ -46,6 +47,14 @@ server:
 
 stop:
 	@:
+
+# === TTS CLI ===
+tts:
+ifndef text
+	@echo "Usage: make tts text=\"Your text here\""
+else
+	PYTHONPATH=. uv run python scripts/tts.py "$(text)"
+endif
 
 # === TEST ===
 test:
