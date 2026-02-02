@@ -21,12 +21,14 @@ uv sync
 # Copy config
 cp .env.example .env
 
+# Download model (~4.3GB, first time only)
+uv run python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice')"
+
 # Run server
 uv run tts-server
-
-# Or with uvicorn directly
-uv run uvicorn tts_adapter.api:app --host 0.0.0.0 --port 9880
 ```
+
+**Note:** Model downloads automatically on first request if not pre-downloaded.
 
 ## Configuration
 
@@ -37,8 +39,8 @@ Edit `.env` (copy from `.env.example`):
 TTS_ENGINE=qwen3
 
 # Defaults
-TTS_DEFAULT_SPEAKER=Ryan
-TTS_DEFAULT_LANGUAGE=English
+TTS_DEFAULT_SPEAKER=Sohee
+TTS_DEFAULT_LANGUAGE=Russian
 
 # Qwen3 engine
 TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice

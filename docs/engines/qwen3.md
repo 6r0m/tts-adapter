@@ -29,15 +29,29 @@ TTS_QWEN3_DTYPE=bfloat16
 
 Shared settings (all engines):
 ```bash
-TTS_DEFAULT_SPEAKER=Ryan
+TTS_DEFAULT_SPEAKER=Sohee
 TTS_DEFAULT_LANGUAGE=Russian
 ```
 
 ## Speakers
 
-Built-in speakers for CustomVoice model:
-- Ryan (male, English/Russian)
-- (check Qwen3-TTS docs for full list)
+9 built-in speakers for CustomVoice model (all support 10 languages including Russian):
+
+| Speaker | Gender | Native | Description |
+|---------|--------|--------|-------------|
+| Vivian | Female | Chinese | Bright, slightly edgy |
+| Serena | Female | Chinese | Warm, gentle |
+| Ono_Anna | Female | Japanese | Playful, light |
+| Sohee | Female | Korean | Warm, rich emotion |
+| Ryan | Male | English | Dynamic, rhythmic |
+| Aiden | Male | English | Sunny, clear midrange |
+| Uncle_Fu | Male | Chinese | Seasoned, low mellow |
+| Dylan | Male | Chinese | Youthful Beijing accent |
+| Eric | Male | Chinese | Lively Sichuan accent |
+
+**For Russian female voice**: Use `Sohee` (warm tone) or `Serena` (gentle tone).
+
+**Supported languages**: Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian
 
 ## Instruction Examples
 
