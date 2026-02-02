@@ -29,7 +29,7 @@ TTS_QWEN3_DTYPE=bfloat16
 
 Shared settings (all engines):
 ```bash
-TTS_DEFAULT_SPEAKER=Sohee
+TTS_DEFAULT_SPEAKER=Serena
 TTS_DEFAULT_LANGUAGE=Russian
 ```
 
@@ -49,7 +49,7 @@ TTS_DEFAULT_LANGUAGE=Russian
 | Dylan | Male | Chinese | Youthful Beijing accent |
 | Eric | Male | Chinese | Lively Sichuan accent |
 
-**For Russian female voice**: Use `Sohee` (warm tone) or `Serena` (gentle tone).
+**For Russian female voice**: Use `Serena` (neutral, best for narration) or `Sohee` (emotional, expressive).
 
 **Supported languages**: Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian
 

@@ -22,14 +22,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 FROM base AS deps
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 \
+    python3.10 \
     python3-pip \
     python3-dev \
     curl \
     tini \
     ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
- && ln -s /usr/bin/python3.12 /usr/bin/python
+ && ln -s /usr/bin/python3.10 /usr/bin/python
 
 # Install uv (pinned version, unmanaged install for Docker/CI)
 ARG UV_VERSION=0.8.9

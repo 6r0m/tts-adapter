@@ -47,7 +47,7 @@ Edit `.env` (copy from `.env.example`):
 TTS_ENGINE=qwen3
 
 # Defaults
-TTS_DEFAULT_SPEAKER=Sohee
+TTS_DEFAULT_SPEAKER=Serena
 TTS_DEFAULT_LANGUAGE=Russian
 
 # Qwen3 engine

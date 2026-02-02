@@ -3,7 +3,7 @@ name = "tts-adapter"
 version = "0.1.0"
 description = "Universal TTS adapter with pluggable engines"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 dependencies = [
     "fastapi>=0.128.0",
