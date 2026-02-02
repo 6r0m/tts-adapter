@@ -26,10 +26,12 @@ class Qwen3Settings(BaseSettings):
         TTS_QWEN3_DTYPE: Data type
     """
 
+    # Ignore other TTS_* vars from .env (handled by main config)
     model_config = SettingsConfigDict(
         env_prefix="TTS_QWEN3_",
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     model_id: str = _DEFAULT_MODEL_ID

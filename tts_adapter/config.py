@@ -18,10 +18,12 @@ class Settings(BaseSettings):
     Engine-specific config is handled by each engine's Settings class.
     """
 
+    # Engine-specific vars (TTS_QWEN3_*) handled by engine config
     model_config = SettingsConfigDict(
         env_prefix="TTS_",
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     # Engine selection
