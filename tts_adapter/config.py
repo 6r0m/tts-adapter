@@ -1,6 +1,5 @@
 """Configuration via environment variables (12-factor style)."""
 
-import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings
@@ -8,6 +7,9 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """TTS adapter settings loaded from environment."""
+
+    # Engine selection
+    engine: str = "qwen3"
 
     # Model settings
     model_id: str = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"

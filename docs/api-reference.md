@@ -53,6 +53,8 @@ curl -X POST http://localhost:9880/tts \
 
 Generate multiple WAV files as ZIP archive.
 
+**Note:** All items must share the same `language`, `speaker`, and `instruct` params (batch params are global).
+
 **Request:**
 ```json
 {
@@ -65,12 +67,12 @@ Generate multiple WAV files as ZIP archive.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| items | array | List of TTS items |
-| items[].id | string | Unique ID (used as filename) |
+| items | array | List of TTS items (must be non-empty) |
+| items[].id | string | Unique ID (used as filename, sanitized) |
 | items[].text | string | Text to synthesize |
-| items[].language | string | Language code |
-| items[].speaker | string | Speaker name |
-| items[].instruct | string | Style instruction |
+| items[].language | string | Language code (must match across items) |
+| items[].speaker | string | Speaker name (must match across items) |
+| items[].instruct | string | Style instruction (must match across items) |
 
 **Response:** `application/zip` containing `{id}.wav` files
 

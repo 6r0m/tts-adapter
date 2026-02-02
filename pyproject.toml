@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-tts-server = "tts_adapter.api.routes:app"
+tts-server = "tts_adapter.cli:main"
 
 [tool.uv]
 dev-dependencies = []

@@ -46,6 +46,7 @@ This allows swapping engines without changing API code.
 
 12-factor style via environment variables:
 
+- `TTS_ENGINE` - Engine name (e.g., `qwen3`)
 - `TTS_MODEL_ID` - HuggingFace model identifier
 - `TTS_DEVICE` - CUDA device (e.g., `cuda:0`)
 - `TTS_DTYPE` - Data type (`bfloat16`, `float16`, `float32`)
@@ -65,7 +66,7 @@ Single-worker uvicorn (`--workers 1`) recommended.
 
 ## Adding New Engines
 
-1. Create `src/tts_adapter/engines/new_engine.py`
+1. Create `tts_adapter/engines/new_engine.py`
 2. Implement `TTSEngine` protocol
-3. Add to `engines/__init__.py`
-4. Update config to allow engine selection
+3. Register in `engines/__init__.py` (`_ENGINES` dict)
+4. Set `TTS_ENGINE=new_engine` to use it

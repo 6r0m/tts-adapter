@@ -1,25 +1,27 @@
 """FastAPI routes for TTS adapter."""
 
 import io
+import re
 import zipfile
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 
 from ..config import get_settings
 from ..contract import HealthResponse, TTSBatchRequest, TTSRequest
-from ..engines.qwen3 import Qwen3Engine
+from ..engine import TTSEngine
+from ..engines import create_engine
 
 # Global engine instance
-_engine: Qwen3Engine | None = None
+_engine: TTSEngine | None = None
 
 
-def get_engine() -> Qwen3Engine:
+def get_engine() -> TTSEngine:
     """Get or create engine instance."""
     global _engine
     if _engine is None:
-        _engine = Qwen3Engine()
+        _engine = create_engine()
     return _engine
 
 
@@ -64,17 +66,37 @@ def tts(req: TTSRequest) -> Response:
     return Response(content=wav_bytes, media_type="audio/wav")
 
 
+def _sanitize_id(item_id: str) -> str:
+    """Sanitize item ID for safe filename (prevent zip slip)."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", item_id)
+
+
 @app.post("/tts/batch")
 def tts_batch(req: TTSBatchRequest) -> Response:
-    """Generate multiple WAV files as ZIP."""
+    """Generate multiple WAV files as ZIP.
+
+    All items must share the same language/speaker/instruct params.
+    """
+    if not req.items:
+        raise HTTPException(status_code=400, detail="items must be non-empty")
+
     engine = get_engine()
 
-    # Group by common params for efficient batching
-    texts = [item.text for item in req.items]
-    ids = [item.id for item in req.items]
-
-    # Use first item's params for batch (all same in typical use)
     first = req.items[0]
+    for item in req.items[1:]:
+        if (item.language, item.speaker, item.instruct) != (
+            first.language,
+            first.speaker,
+            first.instruct,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="all items must share language/speaker/instruct (batch params are global)",
+            )
+
+    texts = [item.text for item in req.items]
+    ids = [_sanitize_id(item.id) for item in req.items]
+
     wav_bytes_list = engine.synthesize_batch(
         texts=texts,
         language=first.language,
@@ -82,7 +104,6 @@ def tts_batch(req: TTSBatchRequest) -> Response:
         instruct=first.instruct,
     )
 
-    # Create ZIP archive
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for item_id, wav_bytes in zip(ids, wav_bytes_list):

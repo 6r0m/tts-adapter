@@ -13,7 +13,7 @@ import argparse
 import json
 import os
 
-from tts_adapter.engines.qwen3 import Qwen3Engine
+from tts_adapter.engines import create_engine
 
 
 def main():
@@ -41,7 +41,7 @@ def main():
     print(f"Loaded {len(items)} items")
 
     # Initialize engine
-    engine = Qwen3Engine()
+    engine = create_engine()
     print("Warming up model...")
     engine.warmup()
     print("Model ready")
