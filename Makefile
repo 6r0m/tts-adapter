@@ -1,4 +1,4 @@
-.PHONY: help install download-model serve server tts test build up down logs health shell clean
+.PHONY: help install download-model serve server tts tts-clone test build up down logs health shell clean
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -14,6 +14,7 @@ help:
 	@echo "  make serve           - Run server locally (Ctrl+C to stop)"
 	@echo "  make server stop     - Kill local server"
 	@echo "  make tts text=\"...\"  - Generate speech (uses defaults from .env)"
+	@echo "  make tts-clone text=\"...\" ref=sample.wav - Clone voice"
 	@echo "  make test            - Test single TTS generation"
 	@echo "  make test batch      - Test batch TTS generation"
 	@echo ""
@@ -36,7 +37,7 @@ install:
 
 # Download model for offline use
 download-model:
-	uv run python scripts/download_model.py
+	uv run python scripts/qwen3/download_model.py
 
 # === LOCAL SERVER ===
 serve:
@@ -58,7 +59,17 @@ tts:
 ifndef text
 	@echo "Usage: make tts text=\"Your text here\""
 else
-	PYTHONPATH=. uv run python scripts/tts.py "$(text)"
+	PYTHONPATH=. uv run python scripts/qwen3/tts.py "$(text)"
+endif
+
+# Voice cloning (requires Base model)
+tts-clone:
+ifndef text
+	@echo "Usage: make tts-clone text=\"Your text\" ref=sample.wav"
+else ifndef ref
+	@echo "Usage: make tts-clone text=\"Your text\" ref=sample.wav"
+else
+	PYTHONPATH=. uv run python scripts/qwen3/tts_clone.py "$(text)" --ref "$(ref)"
 endif
 
 # === TEST ===

@@ -9,6 +9,7 @@ Usage:
 
 import argparse
 import os
+import uuid
 
 # Load .env before any HuggingFace imports
 from dotenv import load_dotenv
@@ -20,10 +21,11 @@ from tts_adapter.config import get_settings
 
 def main():
     settings = get_settings()
+    run_id = str(uuid.uuid4())
 
     parser = argparse.ArgumentParser(description="Generate speech from text")
     parser.add_argument("text", help="Text to synthesize")
-    parser.add_argument("-o", "--output", default="/tmp/tts_out.wav", help="Output WAV file")
+    parser.add_argument("-o", "--output", default=f"tmp/{run_id}/out.wav", help="Output WAV file")
     parser.add_argument("--speaker", default=settings.default_speaker or "Serena", help="Speaker")
     parser.add_argument("--language", default=settings.default_language or "Russian", help="Language")
     parser.add_argument("--instruct", default="", help="Style instruction")
@@ -44,6 +46,7 @@ def main():
         instruct=args.instruct,
     )
 
+    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with open(args.output, "wb") as f:
         f.write(wav_bytes)
 

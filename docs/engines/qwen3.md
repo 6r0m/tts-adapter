@@ -12,8 +12,10 @@ Qwen3-TTS is Alibaba's text-to-speech model with:
 
 | Model | Size | VRAM | Use Case |
 |-------|------|------|----------|
-| `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | 1.7B | ~8GB | Best quality |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | 1.7B | ~8GB | Preset speakers (default) |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | 1.7B | ~8GB | **Voice cloning** |
 | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | 0.6B | ~4GB | Faster, lighter |
+| `Qwen/Qwen3-TTS-12Hz-0.6B-Base` | 0.6B | ~4GB | Voice cloning (lighter) |
 
 For RTX 4070 (12GB), use 1.7B model with bf16.
 
@@ -86,6 +88,39 @@ The `instruct` field controls speaking style:
 | "Energetic, excited" | Higher energy delivery |
 | "Slow, thoughtful" | Slower pace with pauses |
 | "Professional, formal" | Business-like tone |
+
+## Voice Cloning
+
+Qwen3-TTS supports voice cloning via the **Base** model. Clone any voice from a 3-10 second audio sample.
+
+### Setup
+
+Switch to Base model in `.env`:
+```bash
+TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-Base
+```
+
+### CLI Usage
+
+```bash
+make tts-clone text="Hello world" ref=voice_sample.wav
+```
+
+### API Usage
+
+```bash
+curl -X POST http://localhost:9880/tts/clone \
+  -F 'text=Hello world' \
+  -F 'language=Russian' \
+  -F 'reference_audio=@voice_sample.wav' \
+  --output cloned.wav
+```
+
+### Requirements
+
+- Reference audio: WAV format, 3-10 seconds, clear speech
+- Model: Must use Base model (CustomVoice doesn't support cloning)
+- The `/health` endpoint shows `supports_cloning: true` when Base model is loaded
 
 ## Batching
 

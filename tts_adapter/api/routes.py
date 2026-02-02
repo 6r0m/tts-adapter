@@ -5,11 +5,12 @@ import re
 import zipfile
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from ..config import get_settings
 from ..contract import HealthResponse, TTSBatchRequest, TTSRequest
+from ..engines.qwen3 import Qwen3Engine
 from ..engine import TTSEngine
 from ..engines import create_engine
 
@@ -45,11 +46,15 @@ app = FastAPI(
 def health() -> HealthResponse:
     """Health check with model info."""
     engine = get_engine()
+    supports_cloning = False
+    if isinstance(engine, Qwen3Engine):
+        supports_cloning = engine.supports_cloning
     return HealthResponse(
         ok=True,
         engine=engine.engine_name,
         model=engine.model_id,
         device=engine.device,
+        supports_cloning=supports_cloning,
     )
 
 
@@ -114,6 +119,36 @@ def tts_batch(req: TTSBatchRequest) -> Response:
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=tts_batch.zip"},
     )
+
+
+@app.post("/tts/clone")
+async def tts_clone(
+    text: str = Form(..., description="Text to synthesize"),
+    language: str = Form(default="Auto", description="Language code"),
+    reference_audio: UploadFile = File(..., description="Reference audio WAV (3-10 sec)"),
+) -> Response:
+    """Generate speech by cloning voice from reference audio.
+
+    Requires Base model (not CustomVoice). Set TTS_QWEN3_MODEL_ID to a Base model.
+    """
+    engine = get_engine()
+
+    if not isinstance(engine, Qwen3Engine):
+        raise HTTPException(status_code=400, detail="Voice cloning only supported by Qwen3 engine")
+
+    if not engine.supports_cloning:
+        raise HTTPException(
+            status_code=400,
+            detail="Voice cloning requires Base model. Set TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+        )
+
+    audio_bytes = await reference_audio.read()
+    wav_bytes = engine.synthesize_clone(
+        text=text,
+        reference_audio=audio_bytes,
+        language=language,
+    )
+    return Response(content=wav_bytes, media_type="audio/wav")
 
 
 if __name__ == "__main__":

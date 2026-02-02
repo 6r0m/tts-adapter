@@ -28,6 +28,13 @@ class TTSBatchRequest(BaseModel):
     items: list[TTSBatchItem] = Field(..., description="List of texts to synthesize")
 
 
+class TTSCloneRequest(BaseModel):
+    """Voice cloning TTS request (used with form data, not JSON body)."""
+
+    text: str = Field(..., description="Text to synthesize")
+    language: str = Field(default="Auto", description="Language code or 'Auto'")
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
 
@@ -35,3 +42,4 @@ class HealthResponse(BaseModel):
     engine: str
     model: str
     device: str
+    supports_cloning: bool = Field(default=False, description="Whether voice cloning is supported")

@@ -205,6 +205,59 @@ class Qwen3Engine:
 
         return results
 
+    def synthesize_clone(
+        self,
+        text: str,
+        reference_audio: str | bytes,
+        language: str = "Auto",
+    ) -> bytes:
+        """Generate speech by cloning voice from reference audio.
+
+        Requires Base model (not CustomVoice).
+
+        Args:
+            text: Text to synthesize
+            reference_audio: Path to reference WAV file or WAV bytes (3-10 sec)
+            language: Target language
+        """
+        if self._model is None:
+            self.warmup()
+
+        actual_language = self._resolve_language(language)
+
+        # Handle bytes input - write to temp file
+        temp_path = None
+        if isinstance(reference_audio, bytes):
+            import tempfile
+            temp_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            temp_path.write(reference_audio)
+            temp_path.close()
+            audio_path = temp_path.name
+        else:
+            audio_path = reference_audio
+
+        try:
+            with self._lock:
+                wavs, sr = self._model.generate_voice_cloning(
+                    text=text,
+                    reference_audio=audio_path,
+                    language=actual_language,
+                )
+        finally:
+            if temp_path:
+                import os
+                os.unlink(temp_path.name)
+
+        buf = io.BytesIO()
+        sf.write(buf, wavs[0], sr, format="WAV")
+        return buf.getvalue()
+
+    @property
+    def supports_cloning(self) -> bool:
+        """Check if loaded model supports voice cloning."""
+        model_id = self._model_path or self._model_id
+        return "Base" in model_id
+
     @property
     def engine_name(self) -> str:
         """Return engine identifier."""

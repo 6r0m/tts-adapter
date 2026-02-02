@@ -111,6 +111,23 @@ curl -X POST http://localhost:9880/tts/batch \
   --output batch.zip
 ```
 
+### Voice Cloning
+
+Clone any voice from a 3-10 second audio sample (requires Base model):
+
+```bash
+# Switch to Base model in .env:
+# TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-Base
+
+curl -X POST http://localhost:9880/tts/clone \
+  -F 'text=Hello world' \
+  -F 'language=Russian' \
+  -F 'reference_audio=@voice_sample.wav' \
+  --output cloned.wav
+```
+
+See [Qwen3 Engine docs](docs/engines/qwen3.md#voice-cloning) for details.
+
 ### Health Check
 
 ```bash
@@ -130,7 +147,7 @@ curl http://localhost:9880/health
 
 | Engine | Status | Description |
 |--------|--------|-------------|
-| [Qwen3-TTS](docs/engines/qwen3.md) | ✅ Ready | 1.7B/0.6B CustomVoice with instruction support |
+| [Qwen3-TTS](docs/engines/qwen3.md) | ✅ Ready | 1.7B/0.6B with voice cloning, preset speakers, instructions |
 
 ### Adding New Engines
 
