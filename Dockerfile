@@ -31,12 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/* \
  && ln -s /usr/bin/python3.10 /usr/bin/python
 
-# Install uv (pinned version, unmanaged install for Docker/CI)
+# Install uv (pinned version)
 ARG UV_VERSION=0.8.9
-ENV UV_NO_MODIFY_PATH=1
-RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh \
-  | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh \
- && uv --version
+RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh \
+ && mv /root/.local/bin/uv /usr/local/bin/
 
 WORKDIR /app
 
