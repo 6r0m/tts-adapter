@@ -9,13 +9,13 @@ class Settings(BaseSettings):
     """TTS adapter settings loaded from environment.
 
     Env vars (with TTS_ prefix):
+        TTS_ENGINE: Engine name (default: qwen3)
         TTS_DEFAULT_SPEAKER: Default speaker (optional)
         TTS_DEFAULT_LANGUAGE: Default language (optional)
         TTS_HOST: Server host (default: 0.0.0.0)
         TTS_PORT: Server port (default: 9880)
 
-    Engine selection (TTS_ENGINE) is handled by the factory.
-    Engine-specific config is handled by each engine.
+    Engine-specific config is handled by each engine's Settings class.
     """
 
     model_config = SettingsConfigDict(
@@ -23,6 +23,9 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
     )
+
+    # Engine selection
+    engine: str = "qwen3"
 
     # Optional - error at request time if needed but not set
     default_speaker: str | None = None

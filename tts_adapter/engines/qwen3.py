@@ -1,19 +1,46 @@
 """Qwen3-TTS engine implementation."""
 
 import io
-import os
 import threading
+from functools import lru_cache
 from typing import Literal
 
 import soundfile as sf
 import torch
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..config import get_settings
 
-# Qwen3-specific defaults (owned by this engine, not global config)
+# Qwen3-specific defaults (owned by this engine)
 _DEFAULT_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 _DEFAULT_DEVICE = "cuda:0"
 _DEFAULT_DTYPE = "bfloat16"
+
+
+class Qwen3Settings(BaseSettings):
+    """Qwen3 engine settings from environment.
+
+    Env vars (with TTS_QWEN3_ prefix):
+        TTS_QWEN3_MODEL_ID: Model ID
+        TTS_QWEN3_DEVICE: Device
+        TTS_QWEN3_DTYPE: Data type
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="TTS_QWEN3_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    model_id: str = _DEFAULT_MODEL_ID
+    device: str = _DEFAULT_DEVICE
+    dtype: str = _DEFAULT_DTYPE
+
+
+@lru_cache
+def get_qwen3_settings() -> Qwen3Settings:
+    """Get cached Qwen3 settings instance."""
+    return Qwen3Settings()
 
 
 class Qwen3Engine:
@@ -42,23 +69,12 @@ class Qwen3Engine:
             dtype: Data type
         """
         settings = get_settings()
+        qwen3 = get_qwen3_settings()
 
-        # Engine-specific config: constructor arg > env var > default
-        self._model_id = (
-            model_id
-            or os.getenv("TTS_QWEN3_MODEL_ID")
-            or _DEFAULT_MODEL_ID
-        )
-        self._device = (
-            device
-            or os.getenv("TTS_QWEN3_DEVICE")
-            or _DEFAULT_DEVICE
-        )
-        self._dtype_str = (
-            dtype
-            or os.getenv("TTS_QWEN3_DTYPE")
-            or _DEFAULT_DTYPE
-        )
+        # Engine-specific config: constructor arg > settings from .env
+        self._model_id = model_id or qwen3.model_id
+        self._device = device or qwen3.device
+        self._dtype_str = dtype or qwen3.dtype
 
         # Shared config from global settings
         self._default_speaker = settings.default_speaker

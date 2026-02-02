@@ -1,13 +1,10 @@
 """TTS Engine implementations."""
 
-import os
-
+from ..config import get_settings
 from ..engine import TTSEngine
 from .qwen3 import Qwen3Engine
 
 __all__ = ["Qwen3Engine", "create_engine"]
-
-_DEFAULT_ENGINE = "qwen3"
 
 _ENGINES: dict[str, type] = {
     "qwen3": Qwen3Engine,
@@ -15,8 +12,8 @@ _ENGINES: dict[str, type] = {
 
 
 def create_engine() -> TTSEngine:
-    """Create engine instance based on TTS_ENGINE env var."""
-    engine_name = os.getenv("TTS_ENGINE", _DEFAULT_ENGINE)
+    """Create engine instance based on TTS_ENGINE setting."""
+    engine_name = get_settings().engine
     engine_cls = _ENGINES.get(engine_name)
     if engine_cls is None:
         available = ", ".join(_ENGINES.keys())
