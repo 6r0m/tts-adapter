@@ -1,4 +1,4 @@
-.PHONY: help install serve server tts test build up down logs health shell clean
+.PHONY: help install download-model serve server tts test build up down logs health shell clean
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -10,6 +10,7 @@ help:
 	@echo ""
 	@echo "Local (no Docker):"
 	@echo "  make install         - Install deps (uv sync)"
+	@echo "  make download-model  - Download model for offline use"
 	@echo "  make serve           - Run server locally (Ctrl+C to stop)"
 	@echo "  make server stop     - Kill local server"
 	@echo "  make tts text=\"...\"  - Generate speech (uses defaults from .env)"
@@ -32,6 +33,10 @@ install:
 	uv sync
 	@echo ""
 	@echo "Done! Now run: source .venv/bin/activate"
+
+# Download model for offline use
+download-model:
+	uv run python scripts/download_model.py
 
 # === LOCAL SERVER ===
 serve:

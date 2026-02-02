@@ -21,7 +21,8 @@ class Qwen3Settings(BaseSettings):
     """Qwen3 engine settings from environment.
 
     Env vars (with TTS_QWEN3_ prefix):
-        TTS_QWEN3_MODEL_ID: Model ID
+        TTS_QWEN3_MODEL_ID: HuggingFace model ID (used when MODEL_PATH not set)
+        TTS_QWEN3_MODEL_PATH: Local directory path (for offline mode)
         TTS_QWEN3_DEVICE: Device
         TTS_QWEN3_DTYPE: Data type
     """
@@ -35,6 +36,8 @@ class Qwen3Settings(BaseSettings):
     )
 
     model_id: str = _DEFAULT_MODEL_ID
+    # Local path for offline mode - takes priority over model_id
+    model_path: str | None = None
     device: str = _DEFAULT_DEVICE
     dtype: str = _DEFAULT_DTYPE
 
@@ -60,20 +63,23 @@ class Qwen3Engine:
     def __init__(
         self,
         model_id: str | None = None,
+        model_path: str | None = None,
         device: str | None = None,
         dtype: Literal["bfloat16", "float16", "float32"] | None = None,
     ):
         """Initialize engine with optional overrides.
 
         Args:
-            model_id: HuggingFace model ID
+            model_id: HuggingFace model ID (ignored if model_path set)
+            model_path: Local directory path for offline mode
             device: Device string like 'cuda:0'
             dtype: Data type
         """
         settings = get_settings()
         qwen3 = get_qwen3_settings()
 
-        # Engine-specific config: constructor arg > settings from .env
+        # Local path takes priority over model_id (for offline mode)
+        self._model_path = model_path or qwen3.model_path
         self._model_id = model_id or qwen3.model_id
         self._device = device or qwen3.device
         self._dtype_str = dtype or qwen3.dtype
@@ -108,8 +114,11 @@ class Qwen3Engine:
 
         from qwen_tts import Qwen3TTSModel
 
+        # Use local path if set (offline mode), otherwise HF model ID
+        model_source = self._model_path or self._model_id
+
         self._model = Qwen3TTSModel.from_pretrained(
-            self._model_id,
+            model_source,
             device_map=self._device,
             dtype=dtype,
             attn_implementation=attn_impl,
@@ -203,8 +212,8 @@ class Qwen3Engine:
 
     @property
     def model_id(self) -> str:
-        """Return loaded model identifier."""
-        return self._model_id
+        """Return loaded model identifier (path or HF ID)."""
+        return self._model_path or self._model_id
 
     @property
     def device(self) -> str:

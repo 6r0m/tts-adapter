@@ -33,6 +33,29 @@ TTS_DEFAULT_SPEAKER=Serena
 TTS_DEFAULT_LANGUAGE=Russian
 ```
 
+## Offline Mode
+
+The qwen-tts library (v0.0.5) pins transformers==4.57.3 which has a bug requiring network access on model load. To work fully offline:
+
+1. Download model while online:
+   ```bash
+   make download-model
+   ```
+
+2. Set local path in `.env`:
+   ```bash
+   TTS_QWEN3_MODEL_PATH=~/.cache/tts-adapter/models/Qwen3-TTS-12Hz-1.7B-CustomVoice
+   ```
+
+3. Enable offline mode:
+   ```bash
+   HF_HUB_OFFLINE=1
+   ```
+
+When `TTS_QWEN3_MODEL_PATH` is set, the engine loads from that local directory instead of downloading from HuggingFace.
+
+**Why needed:** transformers 4.57.3 has a bug where `_patch_mistral_regex()` makes a network call even for cached models. Fixed in 4.57.4+, but qwen-tts pins the older version.
+
 ## Speakers
 
 9 built-in speakers for CustomVoice model (all support 10 languages including Russian):

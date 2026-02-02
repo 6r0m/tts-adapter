@@ -35,8 +35,21 @@ make test
 
 ```bash
 uv sync
-uv run tts-server
+make serve
 ```
+
+### Offline Mode
+
+Download model while online, then run without network:
+
+```bash
+make download-model     # Downloads to ~/.cache/tts-adapter/models/
+# Add to .env:
+# TTS_QWEN3_MODEL_PATH=~/.cache/tts-adapter/models/Qwen3-TTS-12Hz-1.7B-CustomVoice
+# HF_HUB_OFFLINE=1
+```
+
+See [Qwen3 Engine docs](docs/engines/qwen3.md#offline-mode) for details.
 
 ## Configuration
 
