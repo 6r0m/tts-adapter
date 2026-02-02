@@ -2,32 +2,35 @@
 
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """TTS adapter settings loaded from environment."""
+    """TTS adapter settings loaded from environment.
 
-    # Engine selection
-    engine: str = "qwen3"
+    Env vars (with TTS_ prefix):
+        TTS_DEFAULT_SPEAKER: Default speaker (optional)
+        TTS_DEFAULT_LANGUAGE: Default language (optional)
+        TTS_HOST: Server host (default: 0.0.0.0)
+        TTS_PORT: Server port (default: 9880)
 
-    # Model settings
-    model_id: str = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
-    device: str = "cuda:0"
-    dtype: str = "bfloat16"
+    Engine selection (TTS_ENGINE) is handled by the factory.
+    Engine-specific config is handled by each engine.
+    """
 
-    # Defaults
-    default_speaker: str = "Ryan"
-    default_language: str = "Russian"
+    model_config = SettingsConfigDict(
+        env_prefix="TTS_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
+
+    # Optional - error at request time if needed but not set
+    default_speaker: str | None = None
+    default_language: str | None = None
 
     # Server
     host: str = "0.0.0.0"
     port: int = 9880
-
-    class Config:
-        env_prefix = "TTS_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 @lru_cache

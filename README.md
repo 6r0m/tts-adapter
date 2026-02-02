@@ -23,9 +23,11 @@ curl -X POST http://localhost:9880/tts \
 Copy `.env.example` to `.env` and adjust:
 
 ```bash
-TTS_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
-TTS_DEVICE=cuda:0
-TTS_DTYPE=bfloat16
+TTS_ENGINE=qwen3
+TTS_DEFAULT_LANGUAGE=Russian
+
+# Engine-specific (see docs/engines/qwen3.md)
+TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
 ```
 
 ## Documentation

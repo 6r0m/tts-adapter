@@ -1,6 +1,7 @@
 """Qwen3-TTS engine implementation."""
 
 import io
+import os
 import threading
 from typing import Literal
 
@@ -9,12 +10,22 @@ import torch
 
 from ..config import get_settings
 
+# Qwen3-specific defaults (owned by this engine, not global config)
+_DEFAULT_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+_DEFAULT_DEVICE = "cuda:0"
+_DEFAULT_DTYPE = "bfloat16"
+
 
 class Qwen3Engine:
     """Qwen3-TTS engine implementation.
 
     Uses Qwen3-TTS CustomVoice model for text-to-speech generation.
     Thread-safe via lock for GPU serialization.
+
+    Engine-specific env vars:
+        TTS_QWEN3_MODEL_ID: Model ID (default: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice)
+        TTS_QWEN3_DEVICE: Device (default: cuda:0)
+        TTS_QWEN3_DTYPE: Data type (default: bfloat16)
     """
 
     def __init__(
@@ -26,14 +37,30 @@ class Qwen3Engine:
         """Initialize engine with optional overrides.
 
         Args:
-            model_id: HuggingFace model ID (default from env TTS_MODEL_ID)
-            device: Device string like 'cuda:0' (default from env TTS_DEVICE)
-            dtype: Data type (default from env TTS_DTYPE)
+            model_id: HuggingFace model ID
+            device: Device string like 'cuda:0'
+            dtype: Data type
         """
         settings = get_settings()
-        self._model_id = model_id or settings.model_id
-        self._device = device or settings.device
-        self._dtype_str = dtype or settings.dtype
+
+        # Engine-specific config: constructor arg > env var > default
+        self._model_id = (
+            model_id
+            or os.getenv("TTS_QWEN3_MODEL_ID")
+            or _DEFAULT_MODEL_ID
+        )
+        self._device = (
+            device
+            or os.getenv("TTS_QWEN3_DEVICE")
+            or _DEFAULT_DEVICE
+        )
+        self._dtype_str = (
+            dtype
+            or os.getenv("TTS_QWEN3_DTYPE")
+            or _DEFAULT_DTYPE
+        )
+
+        # Shared config from global settings
         self._default_speaker = settings.default_speaker
         self._default_language = settings.default_language
 
@@ -70,6 +97,28 @@ class Qwen3Engine:
             attn_implementation=attn_impl,
         )
 
+    def _resolve_speaker(self, speaker: str) -> str:
+        """Resolve speaker, error if 'default' requested but not configured."""
+        if speaker != "default":
+            return speaker
+        if self._default_speaker is None:
+            raise ValueError(
+                "speaker='default' but TTS_DEFAULT_SPEAKER not set. "
+                "Provide explicit speaker or set TTS_DEFAULT_SPEAKER env var."
+            )
+        return self._default_speaker
+
+    def _resolve_language(self, language: str) -> str:
+        """Resolve language, error if 'Auto' requested but not configured."""
+        if language != "Auto":
+            return language
+        if self._default_language is None:
+            raise ValueError(
+                "language='Auto' but TTS_DEFAULT_LANGUAGE not set. "
+                "Provide explicit language or set TTS_DEFAULT_LANGUAGE env var."
+            )
+        return self._default_language
+
     def synthesize(
         self,
         text: str,
@@ -81,8 +130,8 @@ class Qwen3Engine:
         if self._model is None:
             self.warmup()
 
-        actual_speaker = speaker if speaker != "default" else self._default_speaker
-        actual_language = language if language != "Auto" else self._default_language
+        actual_speaker = self._resolve_speaker(speaker)
+        actual_language = self._resolve_language(language)
 
         with self._lock:
             wavs, sr = self._model.generate_custom_voice(
@@ -110,8 +159,8 @@ class Qwen3Engine:
         if self._model is None:
             self.warmup()
 
-        actual_speaker = speaker if speaker != "default" else self._default_speaker
-        actual_language = language if language != "Auto" else self._default_language
+        actual_speaker = self._resolve_speaker(speaker)
+        actual_language = self._resolve_language(language)
 
         with self._lock:
             wavs, sr = self._model.generate_custom_voice(

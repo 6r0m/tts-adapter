@@ -46,12 +46,17 @@ This allows swapping engines without changing API code.
 
 12-factor style via environment variables:
 
+**Global (all engines):**
 - `TTS_ENGINE` - Engine name (e.g., `qwen3`)
-- `TTS_MODEL_ID` - HuggingFace model identifier
-- `TTS_DEVICE` - CUDA device (e.g., `cuda:0`)
-- `TTS_DTYPE` - Data type (`bfloat16`, `float16`, `float32`)
+- `TTS_DEFAULT_SPEAKER` - Default speaker
+- `TTS_DEFAULT_LANGUAGE` - Default language
 
-Loaded via `pydantic-settings` with `.env` file support.
+**Engine-specific (namespaced):**
+- `TTS_QWEN3_MODEL_ID` - Qwen3 model identifier
+- `TTS_QWEN3_DEVICE` - CUDA device
+- `TTS_QWEN3_DTYPE` - Data type
+
+Each engine owns its defaults. Global config is engine-agnostic (SOLID).
 
 ### Thread Safety
 

@@ -19,10 +19,16 @@ For RTX 4070 (12GB), use 1.7B model with bf16.
 
 ## Configuration
 
+Engine-specific env vars (namespaced with `TTS_QWEN3_`):
+
 ```bash
-TTS_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
-TTS_DEVICE=cuda:0
-TTS_DTYPE=bfloat16
+TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+TTS_QWEN3_DEVICE=cuda:0
+TTS_QWEN3_DTYPE=bfloat16
+```
+
+Shared settings (all engines):
+```bash
 TTS_DEFAULT_SPEAKER=Ryan
 TTS_DEFAULT_LANGUAGE=Russian
 ```
@@ -75,7 +81,7 @@ python scripts/tts_batch.py --batch-size 4
 
 Or use smaller model:
 ```bash
-TTS_MODEL_ID=Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
 ```
 
 ### Slow First Request
