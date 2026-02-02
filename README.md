@@ -15,20 +15,28 @@ Universal text-to-speech adapter with pluggable engines.
 ## Quick Start
 
 ```bash
-# Install
-uv sync
-
 # Copy config
 cp .env.example .env
 
-# Download model (~4.3GB, first time only)
-uv run python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice')"
+# Build image
+make build
 
-# Run server
-uv run tts-server
+# Start server (model downloads on first run, ~4.3GB)
+make up
+
+# Wait for health (model warmup ~2min)
+make health
+
+# Test generation
+make test
 ```
 
-**Note:** Model downloads automatically on first request if not pre-downloaded.
+### Local Development (without Docker)
+
+```bash
+uv sync
+uv run tts-server
+```
 
 ## Configuration
 
@@ -53,23 +61,22 @@ See [.env.example](.env.example) for all options.
 ## Docker
 
 ```bash
-# Build
-make build
-
-# Start
-make up
-
-# Check health
-make health
-
-# View logs
-make logs
-
-# Stop
-make down
+make build    # Build image
+make up       # Start container
+make health   # Check health
+make logs     # View logs
+make down     # Stop
+make shell    # Shell into container
 ```
 
 See [Makefile](Makefile) for all targets.
+
+### Model Cache
+
+Model weights (~4.3GB) download automatically on first `make up`. Stored in host's `~/.cache/huggingface` and mounted into container, so:
+- Download happens once, persists across container restarts
+- Same cache shared between Docker and local development
+- Custom path: set `HF_CACHE_PATH` in `.env`
 
 ## API Usage
 
