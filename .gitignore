@@ -208,3 +208,8 @@ __marimo__/
 
 # Temp folder
 tmp/
+
+# Project-specific
+*.wav
+*.mp3
+*.zip

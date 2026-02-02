@@ -1,0 +1,51 @@
+# TTS Adapter - Local Development
+# Usage:
+#   GPU: docker compose --profile gpu up --build
+#
+# Note: TTS requires GPU (qwen-tts needs CUDA)
+
+name: tts
+
+# Shared network for cross-container communication
+networks:
+  render-network:
+    name: render-network
+    driver: bridge
+
+# Common configuration (shared via YAML anchor)
+x-common: &common
+  restart: unless-stopped
+  ports:
+    - "${TTS_PORT:-9880}:9880"
+  volumes:
+    # HuggingFace cache for model weights (use host's standard cache)
+    - ${HF_CACHE_PATH:-~/.cache/huggingface}:/home/app/.cache/huggingface
+  env_file:
+    - .env
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9880/health', timeout=10)"]
+    interval: 30s
+    timeout: 10s
+    start_period: 120s
+    retries: 3
+
+services:
+  # GPU service (required for TTS)
+  adapter-tts:
+    <<: *common
+    container_name: adapter-tts
+    profiles: ["gpu"]
+    image: ${CI_REGISTRY_IMAGE:-tts}/adapter-tts:${CI_COMMIT_REF_SLUG:-latest}-${CI_PIPELINE_ID:-local}
+    networks:
+      - default
+      - render-network
+    build:
+      context: .
+      dockerfile: Dockerfile
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
