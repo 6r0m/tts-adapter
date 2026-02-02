@@ -210,6 +210,7 @@ class Qwen3Engine:
         text: str,
         reference_audio: str | bytes,
         language: str = "Auto",
+        reference_text: str | None = None,
     ) -> bytes:
         """Generate speech by cloning voice from reference audio.
 
@@ -219,6 +220,7 @@ class Qwen3Engine:
             text: Text to synthesize
             reference_audio: Path to reference WAV file or WAV bytes (3-10 sec)
             language: Target language
+            reference_text: Transcript of reference audio (improves quality)
         """
         if self._model is None:
             self.warmup()
@@ -236,12 +238,17 @@ class Qwen3Engine:
         else:
             audio_path = reference_audio
 
+        # Use x_vector_only_mode when no transcript provided
+        use_x_vector_only = not reference_text or reference_text.strip() == ""
+
         try:
             with self._lock:
-                wavs, sr = self._model.generate_voice_cloning(
+                wavs, sr = self._model.generate_voice_clone(
                     text=text,
-                    reference_audio=audio_path,
                     language=actual_language,
+                    ref_audio=audio_path,
+                    ref_text=reference_text or "",
+                    x_vector_only_mode=use_x_vector_only,
                 )
         finally:
             if temp_path:
@@ -255,7 +262,7 @@ class Qwen3Engine:
     @property
     def supports_cloning(self) -> bool:
         """Check if loaded model supports voice cloning."""
-        model_id = self._model_path or self._model_id
+        model_id = str(self._model_path or self._model_id or "")
         return "Base" in model_id
 
     @property

@@ -125,11 +125,13 @@ def tts_batch(req: TTSBatchRequest) -> Response:
 async def tts_clone(
     text: str = Form(..., description="Text to synthesize"),
     language: str = Form(default="Auto", description="Language code"),
+    reference_text: str = Form(default="", description="Transcript of reference audio (improves quality)"),
     reference_audio: UploadFile = File(..., description="Reference audio WAV (3-10 sec)"),
 ) -> Response:
     """Generate speech by cloning voice from reference audio.
 
     Requires Base model (not CustomVoice). Set TTS_QWEN3_MODEL_ID to a Base model.
+    Provide reference_text (transcript) for better quality, or omit for x_vector_only mode.
     """
     engine = get_engine()
 
@@ -147,6 +149,7 @@ async def tts_clone(
         text=text,
         reference_audio=audio_bytes,
         language=language,
+        reference_text=reference_text if reference_text else None,
     )
     return Response(content=wav_bytes, media_type="audio/wav")
 

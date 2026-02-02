@@ -120,9 +120,10 @@ Clone any voice from a 3-10 second audio sample (requires Base model):
 # TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-Base
 
 curl -X POST http://localhost:9880/tts/clone \
-  -F 'text=Hello world' \
+  -F 'text=Привет мир' \
   -F 'language=Russian' \
   -F 'reference_audio=@voice_sample.wav' \
+  -F 'reference_text=Текст из референсного аудио' \
   --output cloned.wav
 ```
 

@@ -103,24 +103,38 @@ TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-Base
 ### CLI Usage
 
 ```bash
+# Without transcript (x_vector_only mode - lower quality)
 make tts-clone text="Hello world" ref=voice_sample.wav
+
+# With transcript (better quality)
+PYTHONPATH=. uv run python scripts/qwen3/tts_clone.py "Hello world" \
+  --ref voice_sample.wav \
+  --ref-text "Original text from the reference audio"
 ```
 
 ### API Usage
 
 ```bash
 curl -X POST http://localhost:9880/tts/clone \
-  -F 'text=Hello world' \
+  -F 'text=Привет мир' \
   -F 'language=Russian' \
   -F 'reference_audio=@voice_sample.wav' \
+  -F 'reference_text=Текст из референсного аудио' \
   --output cloned.wav
 ```
 
 ### Requirements
 
-- Reference audio: WAV format, 3-10 seconds, clear speech
-- Model: Must use Base model (CustomVoice doesn't support cloning)
+- **Reference audio**: WAV format, 3-10 seconds, clear speech
+- **Reference text** (optional): Transcript of reference audio - significantly improves quality
+- **Model**: Must use Base model (CustomVoice doesn't support cloning)
 - The `/health` endpoint shows `supports_cloning: true` when Base model is loaded
+
+### Quality Tips
+
+- Provide `reference_text` (transcript) for best quality
+- Without transcript, uses `x_vector_only_mode` - faster but lower quality
+- Reference audio should be clean, single speaker, no background noise
 
 ## Batching
 
