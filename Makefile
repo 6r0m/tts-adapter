@@ -1,4 +1,4 @@
-.PHONY: help install test build up down logs health shell clean
+.PHONY: help install serve server test build up down logs health shell clean
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -10,6 +10,8 @@ help:
 	@echo ""
 	@echo "Local (no Docker):"
 	@echo "  make install         - Install deps (uv sync)"
+	@echo "  make serve           - Run server locally (Ctrl+C to stop)"
+	@echo "  make server stop     - Kill local server"
 	@echo "  make test            - Test single TTS generation"
 	@echo "  make test batch      - Test batch TTS generation"
 	@echo ""
@@ -29,6 +31,21 @@ install:
 	uv sync
 	@echo ""
 	@echo "Done! Now run: source .venv/bin/activate"
+
+# === LOCAL SERVER ===
+serve:
+	uv run python -m tts_adapter.cli
+
+server:
+	@$(eval ACTION := $(filter-out $@,$(MAKECMDGOALS)))
+	@if [ "$(ACTION)" = "stop" ]; then \
+		pkill -f "tts_adapter.cli" 2>/dev/null && echo "Server stopped" || echo "No server running"; \
+	else \
+		echo "Usage: make server stop"; \
+	fi
+
+stop:
+	@:
 
 # === TEST ===
 test:

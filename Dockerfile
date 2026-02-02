@@ -16,7 +16,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
-    UV_HTTP_TIMEOUT=300
+    UV_HTTP_TIMEOUT=1800
 
 # Deps stage: System packages + Python dependencies
 FROM base AS deps
