@@ -110,7 +110,7 @@ INDEX_BODY = """
 
             <label for="design-instruct">Voice description (required)</label>
             <textarea id="design-instruct" placeholder="e.g., Adult female voice, contralto range, warm and confident, expressive" title="Required voice description (VoiceDesign model)"></textarea>
-            <p class="hint">Describe the voice: gender, age, pitch, timbre, emotion, pace.</p>
+            <p class="hint">Describe the voice: gender, age, pitch, timbre, emotion, pace. VoiceDesign may add trailing silence; we trim it.</p>
 
             <button onclick="generateDesign()" title="Generate speech with designed voice" type="button">Generate with Designed Voice</button>
         </div>

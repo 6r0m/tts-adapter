@@ -87,6 +87,7 @@ audio { width: 100%; margin: 10px 0; }
     cursor: not-allowed;
 }
 .tab.tab-disabled:hover { background: #e0e0e0; }
+.tab.tab-hidden { display: none; }
 .tab.active {
     background: white;
     color: #333;

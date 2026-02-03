@@ -79,7 +79,13 @@ function updateModelFeatures(modelId) {
         if (model.supports_custom_voice) caps.push('Simple');
         if (model.supports_design) caps.push('Design');
         if (model.supports_cloning) caps.push('Clone');
-        features.textContent = caps.length ? `(${caps.join(', ')})` : '';
+        if (caps.length === 1) {
+            features.textContent = `Mode: ${caps[0]}`;
+        } else if (caps.length > 1) {
+            features.textContent = `Modes: ${caps.join(', ')}`;
+        } else {
+            features.textContent = '';
+        }
         features.title = caps.length ? `Capabilities: ${caps.join(', ')}` : 'Capabilities unavailable';
     } else {
         features.textContent = '';
@@ -213,11 +219,19 @@ function updateTabAvailability(data) {
     setTabState(simpleTab, data.supports_custom_voice, 'Requires CustomVoice model');
     setTabState(designTab, data.supports_design, 'Requires VoiceDesign model');
     setTabState(cloneTab, data.supports_cloning, 'Requires Base model');
+    setTabVisibility(simpleTab, data.supports_custom_voice);
+    setTabVisibility(designTab, data.supports_design);
+    setTabVisibility(cloneTab, data.supports_cloning);
 
     const availableTabs = [];
     if (data.supports_custom_voice) availableTabs.push('simple');
     if (data.supports_design) availableTabs.push('design');
     if (data.supports_cloning) availableTabs.push('clone');
+
+    const tabsContainer = document.querySelector('.tabs');
+    if (tabsContainer) {
+        tabsContainer.style.display = availableTabs.length > 1 ? 'flex' : 'none';
+    }
 
     if (!availableTabs.includes(currentTab) && availableTabs.length) {
         switchTab(availableTabs[0]);
@@ -231,6 +245,11 @@ function setTabState(tab, supported, disabledTitle) {
     tab.setAttribute('aria-disabled', supported ? 'false' : 'true');
     tab.dataset.supported = supported ? 'true' : 'false';
     tab.title = supported ? defaultTitle : disabledTitle;
+}
+
+function setTabVisibility(tab, supported) {
+    if (!tab) return;
+    tab.classList.toggle('tab-hidden', !supported);
 }
 
 function switchTab(tab) {

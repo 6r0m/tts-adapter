@@ -286,9 +286,40 @@ class Qwen3Engine:
                 instruct=instruct,
             )
 
+        wav = self._trim_silence(wavs[0], sr)
         buf = io.BytesIO()
-        sf.write(buf, wavs[0], sr, format="WAV")
+        sf.write(buf, wav, sr, format="WAV")
         return buf.getvalue()
+
+    def _trim_silence(self, wav, sr: int, pad_seconds: float = 0.05):
+        """Trim leading/trailing near-silence to avoid padded output."""
+        try:
+            import numpy as np
+        except ImportError:
+            return wav
+
+        wav_arr = np.asarray(wav)
+        if wav_arr.size == 0:
+            return wav_arr
+
+        if wav_arr.ndim == 2:
+            signal = np.max(np.abs(wav_arr), axis=1)
+        else:
+            signal = np.abs(wav_arr)
+
+        max_amp = float(signal.max()) if signal.size else 0.0
+        if max_amp <= 0:
+            return wav_arr
+
+        threshold = max(max_amp * 0.01, 1e-4)
+        indices = np.where(signal > threshold)[0]
+        if indices.size == 0:
+            return wav_arr
+
+        pad = int(sr * pad_seconds)
+        start = max(int(indices[0]) - pad, 0)
+        end = min(int(indices[-1]) + pad + 1, wav_arr.shape[0])
+        return wav_arr[start:end]
 
     @property
     def supports_cloning(self) -> bool:
