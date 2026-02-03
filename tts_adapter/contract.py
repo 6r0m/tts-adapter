@@ -43,3 +43,4 @@ class HealthResponse(BaseModel):
     model: str
     device: str
     supports_cloning: bool = Field(default=False, description="Whether voice cloning is supported")
+    supports_design: bool = Field(default=False, description="Whether voice design is supported")

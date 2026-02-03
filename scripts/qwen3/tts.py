@@ -33,6 +33,8 @@ def main():
 
     print(f"Text: {args.text[:50]}{'...' if len(args.text) > 50 else ''}")
     print(f"Speaker: {args.speaker}, Language: {args.language}")
+    if args.instruct:
+        print(f"Instruct: {args.instruct}")
 
     engine = create_engine()
     print("Loading model...")

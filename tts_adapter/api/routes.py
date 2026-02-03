@@ -47,14 +47,17 @@ def health() -> HealthResponse:
     """Health check with model info."""
     engine = get_engine()
     supports_cloning = False
+    supports_design = False
     if isinstance(engine, Qwen3Engine):
         supports_cloning = engine.supports_cloning
+        supports_design = engine.supports_design
     return HealthResponse(
         ok=True,
         engine=engine.engine_name,
         model=engine.model_id,
         device=engine.device,
         supports_cloning=supports_cloning,
+        supports_design=supports_design,
     )
 
 
@@ -150,6 +153,35 @@ async def tts_clone(
         reference_audio=audio_bytes,
         language=language,
         reference_text=reference_text if reference_text else None,
+    )
+    return Response(content=wav_bytes, media_type="audio/wav")
+
+
+@app.post("/tts/design")
+def tts_design(
+    text: str = Form(..., description="Text to synthesize"),
+    instruct: str = Form(..., description="Natural language description of the voice"),
+    language: str = Form(default="Auto", description="Language code"),
+) -> Response:
+    """Generate speech with a designed voice from natural language description.
+
+    Requires VoiceDesign model. Set TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign
+    """
+    engine = get_engine()
+
+    if not isinstance(engine, Qwen3Engine):
+        raise HTTPException(status_code=400, detail="Voice design only supported by Qwen3 engine")
+
+    if not engine.supports_design:
+        raise HTTPException(
+            status_code=400,
+            detail="Voice design requires VoiceDesign model. Set TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        )
+
+    wav_bytes = engine.synthesize_design(
+        text=text,
+        instruct=instruct,
+        language=language,
     )
     return Response(content=wav_bytes, media_type="audio/wav")
 

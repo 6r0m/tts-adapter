@@ -259,11 +259,48 @@ class Qwen3Engine:
         sf.write(buf, wavs[0], sr, format="WAV")
         return buf.getvalue()
 
+    def synthesize_design(
+        self,
+        text: str,
+        instruct: str,
+        language: str = "Auto",
+    ) -> bytes:
+        """Generate speech with designed voice from natural language description.
+
+        Requires VoiceDesign model.
+
+        Args:
+            text: Text to synthesize
+            instruct: Natural language description of the voice
+            language: Target language
+        """
+        if self._model is None:
+            self.warmup()
+
+        actual_language = self._resolve_language(language)
+
+        with self._lock:
+            wavs, sr = self._model.generate_voice_design(
+                text=text,
+                language=actual_language,
+                instruct=instruct,
+            )
+
+        buf = io.BytesIO()
+        sf.write(buf, wavs[0], sr, format="WAV")
+        return buf.getvalue()
+
     @property
     def supports_cloning(self) -> bool:
         """Check if loaded model supports voice cloning."""
         model_id = str(self._model_path or self._model_id or "")
         return "Base" in model_id
+
+    @property
+    def supports_design(self) -> bool:
+        """Check if loaded model supports voice design."""
+        model_id = str(self._model_path or self._model_id or "")
+        return "VoiceDesign" in model_id
 
     @property
     def engine_name(self) -> str:

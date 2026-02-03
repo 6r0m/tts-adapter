@@ -1,4 +1,4 @@
-.PHONY: help install download-model serve server tts tts-clone test build up down logs health shell clean
+.PHONY: help install download-model serve server tts tts-clone tts-design test build up down logs health shell clean
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -13,8 +13,9 @@ help:
 	@echo "  make download-model  - Download model for offline use"
 	@echo "  make serve           - Run server locally (Ctrl+C to stop)"
 	@echo "  make server stop     - Kill local server"
-	@echo "  make tts text=\"...\"  - Generate speech (uses defaults from .env)"
-	@echo "  make tts-clone text=\"...\" ref=sample.wav - Clone voice"
+	@echo "  make tts text=\"...\" [instruct=\"...\"] - Generate speech"
+	@echo "  make tts-clone text=\"...\" ref=sample.wav - Clone voice (Base model)"
+	@echo "  make tts-design text=\"...\" instruct=\"...\" - Design voice (VoiceDesign model)"
 	@echo "  make test            - Test single TTS generation"
 	@echo "  make test batch      - Test batch TTS generation"
 	@echo ""
@@ -57,9 +58,23 @@ stop:
 # === TTS CLI ===
 tts:
 ifndef text
-	@echo "Usage: make tts text=\"Your text here\""
+	@echo "Usage: make tts text=\"Your text here\" [instruct=\"...\"]"
+else
+ifdef instruct
+	PYTHONPATH=. uv run python scripts/qwen3/tts.py "$(text)" --instruct "$(instruct)"
 else
 	PYTHONPATH=. uv run python scripts/qwen3/tts.py "$(text)"
+endif
+endif
+
+# Voice design (requires VoiceDesign model)
+tts-design:
+ifndef text
+	@echo "Usage: make tts-design text=\"Your text\" instruct=\"voice description\""
+else ifndef instruct
+	@echo "Usage: make tts-design text=\"Your text\" instruct=\"voice description\""
+else
+	PYTHONPATH=. uv run python scripts/qwen3/tts_design.py "$(text)" --instruct "$(instruct)"
 endif
 
 # Voice cloning (requires Base model)

@@ -12,8 +12,9 @@ Qwen3-TTS is Alibaba's text-to-speech model with:
 
 | Model | Size | VRAM | Use Case |
 |-------|------|------|----------|
-| `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | 1.7B | ~8GB | Preset speakers (default) |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | 1.7B | ~8GB | Preset speakers + instruct (default) |
 | `Qwen/Qwen3-TTS-12Hz-1.7B-Base` | 1.7B | ~8GB | **Voice cloning** |
+| `Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign` | 1.7B | ~8GB | **Create voices from description** |
 | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` | 0.6B | ~4GB | Faster, lighter |
 | `Qwen/Qwen3-TTS-12Hz-0.6B-Base` | 0.6B | ~4GB | Voice cloning (lighter) |
 
@@ -78,16 +79,97 @@ When `TTS_QWEN3_MODEL_PATH` is set, the engine loads from that local directory i
 
 **Supported languages**: Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian
 
-## Instruction Examples
+## Instruction Control (CustomVoice)
 
-The `instruct` field controls speaking style:
+The `instruct` parameter controls tone, emotion, speed, and style. Works with **CustomVoice** model only.
+
+### What `instruct` can control
+
+| Aspect | Examples |
+|--------|----------|
+| **Emotion** | "angry", "happy", "sad", "excited", "calm" |
+| **Tone** | "professional", "friendly", "serious", "playful" |
+| **Speed** | "speak slowly", "fast pace", "deliberate" |
+| **Style** | "whisper", "shout", "hesitant", "confident" |
+| **Combined** | "Speak slowly and calmly with a warm tone" |
+
+### Instruction Examples
 
 | Instruction | Effect |
 |-------------|--------|
-| "Calm, friendly" | Neutral, approachable tone |
-| "Energetic, excited" | Higher energy delivery |
-| "Slow, thoughtful" | Slower pace with pauses |
-| "Professional, formal" | Business-like tone |
+| `"Calm, friendly"` | Neutral, approachable tone |
+| `"Energetic, excited"` | Higher energy delivery |
+| `"Slow, thoughtful"` | Slower pace with pauses |
+| `"Professional, formal"` | Business-like tone |
+| `"Speak angrily"` | Angry emotional delivery |
+| `"Whisper softly"` | Quiet, intimate voice |
+| `"用特别愤怒的语气说"` | Chinese: speak very angrily |
+
+### CLI Usage
+
+```bash
+# With instruct parameter
+PYTHONPATH=. uv run python scripts/qwen3/tts.py "Hello world" --instruct "Speak slowly and calmly"
+
+# Via make (requires CustomVoice model)
+make tts text="Hello" instruct="excited, happy"
+```
+
+### API Usage
+
+```bash
+curl -X POST http://localhost:9880/tts \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Hello world","speaker":"Serena","instruct":"Speak slowly and warmly"}'
+```
+
+**Note:** `instruct` only works with CustomVoice model. For Base model (cloning), voice characteristics come from reference audio.
+
+## Voice Design
+
+Create custom voices from natural language descriptions using the **VoiceDesign** model. No reference audio needed - describe the voice you want.
+
+### Setup
+
+Switch to VoiceDesign model in `.env`:
+```bash
+TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign
+```
+
+### CLI Usage
+
+```bash
+# Create a voice from description
+PYTHONPATH=. uv run python scripts/qwen3/tts_design.py "Hello world" \
+  --instruct "Young female voice, warm and friendly, slight Russian accent"
+
+# Via make
+make tts-design text="Hello" instruct="Deep male voice, professional newsreader"
+```
+
+### API Usage
+
+```bash
+curl -X POST http://localhost:9880/tts/design \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "text": "Привет мир",
+    "language": "Russian",
+    "instruct": "Young female voice, warm and expressive"
+  }' --output designed.wav
+```
+
+### Instruct Examples for Voice Design
+
+| Description | Result |
+|-------------|--------|
+| `"Young female, warm, friendly"` | Approachable female voice |
+| `"Deep male, authoritative, newsreader"` | Professional male announcer |
+| `"Elderly woman, gentle, grandmother-like"` | Warm elderly female |
+| `"Teen male, energetic, gaming streamer"` | Youthful excited male |
+| `"体现撒娇稚嫩的萝莉女声"` | Chinese: cute young girl voice |
+
+**Tip:** VoiceDesign + Clone workflow: Generate a voice you like with VoiceDesign, save it, then use it as reference for cloning to reuse consistently.
 
 ## Voice Cloning
 
