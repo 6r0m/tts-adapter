@@ -71,16 +71,26 @@ INDEX_HTML = """
         .status.ok { background: #e8f5e9; }
         .status.error { background: #ffebee; }
         .hint { font-size: 12px; color: #666; margin-top: -10px; margin-bottom: 15px; }
-        .tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 0; }
         .tab {
-            padding: 8px 16px;
+            padding: 10px 20px;
             background: #e0e0e0;
-            border: none;
+            border: 1px solid #ccc;
+            border-bottom: none;
             border-radius: 4px 4px 0 0;
             cursor: pointer;
+            font-weight: 500;
+            color: #666;
         }
-        .tab.active { background: white; }
-        .tab-content { display: none; }
+        .tab:hover { background: #f0f0f0; }
+        .tab.active {
+            background: white;
+            color: #333;
+            border-bottom: 1px solid white;
+            margin-bottom: -1px;
+            position: relative;
+        }
+        .tab-content { display: none; border-top: 1px solid #ccc; padding-top: 15px; }
         .tab-content.active { display: block; }
     </style>
 </head>
@@ -264,6 +274,22 @@ function showError(msg) {
     document.getElementById('result').style.display = 'block';
 }
 
+function parseErrorDetail(detail) {
+    // Handle FastAPI validation errors (array format)
+    if (Array.isArray(detail)) {
+        return detail.map(e => e.msg || e.message || JSON.stringify(e)).join('; ');
+    }
+    // Handle string errors
+    if (typeof detail === 'string') {
+        return detail;
+    }
+    // Handle object errors
+    if (detail && typeof detail === 'object') {
+        return detail.msg || detail.message || JSON.stringify(detail);
+    }
+    return 'Generation failed';
+}
+
 async function generateSimple() {
     const btn = event.target;
     btn.disabled = true;
@@ -283,7 +309,7 @@ async function generateSimple() {
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.detail || 'Generation failed');
+            throw new Error(parseErrorDetail(err.detail));
         }
 
         showResult(await res.blob());
@@ -310,7 +336,7 @@ async function generateDesign() {
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.detail || 'Generation failed');
+            throw new Error(parseErrorDetail(err.detail));
         }
 
         showResult(await res.blob());
@@ -341,7 +367,7 @@ async function generateClone() {
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.detail || 'Generation failed');
+            throw new Error(parseErrorDetail(err.detail));
         }
 
         showResult(await res.blob());
