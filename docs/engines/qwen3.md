@@ -135,6 +135,53 @@ curl -X POST http://localhost:9880/tts/clone \
 - Provide `reference_text` (transcript) for best quality
 - Without transcript, uses `x_vector_only_mode` - faster but lower quality
 - Reference audio should be clean, single speaker, no background noise
+- Set language explicitly (`Russian`), don't use `Auto`
+- Use whisper-small instead of whisper-tiny for better transcription accuracy
+
+### Generation Parameters
+
+The `generate_voice_clone()` method accepts HuggingFace Transformers generation kwargs for fine-tuning output quality:
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `temperature` | ~1.0 | Lower = more deterministic, try 0.7-0.8 |
+| `top_p` | ~0.9 | Nucleus sampling threshold |
+| `top_k` | - | Limit token choices |
+| `repetition_penalty` | 1.0 | Higher reduces repetition artifacts, try 1.1 |
+
+These parameters are not yet exposed via CLI/API - requires code changes to `synthesize_clone()`.
+
+### Transcribing Reference Audio
+
+To get the best cloning quality, transcribe your reference audio first. Use HuggingFace whisper via transformers (already installed as qwen-tts dependency):
+
+```bash
+# Quick transcription (tiny model, ~1GB VRAM)
+uv run python -c "
+from transformers import pipeline
+asr = pipeline('automatic-speech-recognition', model='openai/whisper-tiny', device='cuda:0')
+result = asr('voice_sample.wav', generate_kwargs={'language': 'russian'})
+print(result['text'])
+"
+
+# Better quality (small model, ~2GB VRAM)
+uv run python -c "
+from transformers import pipeline
+asr = pipeline('automatic-speech-recognition', model='openai/whisper-small', device='cuda:0')
+result = asr('voice_sample.wav', generate_kwargs={'language': 'russian'})
+print(result['text'])
+"
+```
+
+Available models (trade-off between speed and accuracy):
+| Model | VRAM | Use Case |
+|-------|------|----------|
+| `openai/whisper-tiny` | ~1GB | Quick transcription |
+| `openai/whisper-small` | ~2GB | Good balance |
+| `openai/whisper-medium` | ~5GB | Better accuracy |
+| `openai/whisper-large-v3` | ~10GB | Best accuracy |
+
+Models download automatically on first use to `~/.cache/huggingface/hub/`.
 
 ## Batching
 

@@ -46,7 +46,7 @@ serve:
 server:
 	@$(eval ACTION := $(filter-out $@,$(MAKECMDGOALS)))
 	@if [ "$(ACTION)" = "stop" ]; then \
-		pkill -f "tts_adapter.cli" 2>/dev/null && echo "Server stopped" || echo "No server running"; \
+		pkill -f "python.*tts_adapter" 2>/dev/null && echo "Server stopped" || echo "No server running"; \
 	else \
 		echo "Usage: make server stop"; \
 	fi

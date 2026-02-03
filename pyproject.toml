@@ -14,9 +14,6 @@ dependencies = [
     "uvicorn[standard]>=0.40.0",
 ]
 
-[project.optional-dependencies]
-transcribe = ["openai-whisper>=20250625"]
-
 [project.scripts]
 tts-server = "tts_adapter.cli:main"
 
