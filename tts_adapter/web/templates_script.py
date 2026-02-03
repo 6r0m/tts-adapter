@@ -278,6 +278,18 @@ function showError(msg) {
     document.getElementById('result').style.display = 'block';
 }
 
+function setProgressVisible(visible, labelText, hintText) {
+    const progress = document.getElementById('gen-progress');
+    if (!progress) return;
+    progress.classList.toggle('active', visible);
+    if (labelText) {
+        document.getElementById('gen-progress-label').textContent = labelText;
+    }
+    if (hintText) {
+        document.getElementById('gen-progress-hint').textContent = hintText;
+    }
+}
+
 function parseErrorDetail(detail) {
     // Handle FastAPI validation errors (array format)
     if (Array.isArray(detail)) {
@@ -298,6 +310,7 @@ async function generateSimple() {
     const btn = event.target;
     btn.disabled = true;
     btn.textContent = 'Generating...';
+    setProgressVisible(true, 'Generating audio...', 'First request after model load can be slower.');
 
     try {
         const res = await fetch('/tts', {
@@ -322,6 +335,7 @@ async function generateSimple() {
     } finally {
         btn.disabled = false;
         btn.textContent = 'Generate Speech';
+        setProgressVisible(false);
     }
 }
 
@@ -329,6 +343,7 @@ async function generateDesign() {
     const btn = event.target;
     btn.disabled = true;
     btn.textContent = 'Generating...';
+    setProgressVisible(true, 'Designing voice...', 'First request after model load can be slower.');
 
     try {
         const form = new FormData();
@@ -349,6 +364,7 @@ async function generateDesign() {
     } finally {
         btn.disabled = false;
         btn.textContent = 'Generate with Designed Voice';
+        setProgressVisible(false);
     }
 }
 
@@ -356,6 +372,7 @@ async function generateClone() {
     const btn = event.target;
     btn.disabled = true;
     btn.textContent = 'Generating...';
+    setProgressVisible(true, 'Cloning voice...', 'First request after model load can be slower.');
 
     try {
         const audioFile = document.getElementById('clone-audio').files[0];
@@ -380,6 +397,7 @@ async function generateClone() {
     } finally {
         btn.disabled = false;
         btn.textContent = 'Generate with Cloned Voice';
+        setProgressVisible(false);
     }
 }
 

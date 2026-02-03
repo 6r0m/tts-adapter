@@ -168,8 +168,9 @@ class Qwen3Engine:
                 instruct=instruct,
             )
 
+        wav = self._trim_silence(wavs[0], sr)
         buf = io.BytesIO()
-        sf.write(buf, wavs[0], sr, format="WAV")
+        sf.write(buf, wav, sr, format="WAV")
         return buf.getvalue()
 
     def synthesize_batch(
@@ -199,8 +200,9 @@ class Qwen3Engine:
 
         results = []
         for wav in wavs:
+            trimmed = self._trim_silence(wav, sr)
             buf = io.BytesIO()
-            sf.write(buf, wav, sr, format="WAV")
+            sf.write(buf, trimmed, sr, format="WAV")
             results.append(buf.getvalue())
 
         return results
@@ -255,8 +257,9 @@ class Qwen3Engine:
                 import os
                 os.unlink(temp_path.name)
 
+        wav = self._trim_silence(wavs[0], sr)
         buf = io.BytesIO()
-        sf.write(buf, wavs[0], sr, format="WAV")
+        sf.write(buf, wav, sr, format="WAV")
         return buf.getvalue()
 
     def synthesize_design(

@@ -110,7 +110,7 @@ INDEX_BODY = """
 
             <label for="design-instruct">Voice description (required)</label>
             <textarea id="design-instruct" placeholder="e.g., Adult female voice, contralto range, warm and confident, expressive" title="Required voice description (VoiceDesign model)"></textarea>
-            <p class="hint">Describe the voice: gender, age, pitch, timbre, emotion, pace. VoiceDesign may add trailing silence; we trim it.</p>
+            <p class="hint">Describe the voice: gender, age, pitch, timbre, emotion, pace. We trim trailing silence.</p>
 
             <button onclick="generateDesign()" title="Generate speech with designed voice" type="button">Generate with Designed Voice</button>
         </div>
@@ -134,6 +134,12 @@ INDEX_BODY = """
             <input type="text" id="clone-ref-text" placeholder="What is said in the reference audio" title="Optional transcript of the reference audio">
 
             <button onclick="generateClone()" title="Generate speech with cloned voice" type="button">Generate with Cloned Voice</button>
+        </div>
+
+        <div id="gen-progress" class="progress" aria-live="polite">
+            <div id="gen-progress-label" class="progress-label">Generating audio...</div>
+            <div class="progress-bar"><div class="progress-bar-inner"></div></div>
+            <div id="gen-progress-hint" class="progress-hint">First request after model load can be slower.</div>
         </div>
 
         <div id="result" class="result">

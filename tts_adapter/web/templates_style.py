@@ -70,6 +70,35 @@ audio { width: 100%; margin: 10px 0; }
 .status.ok { background: #e8f5e9; }
 .status.error { background: #ffebee; }
 .hint { font-size: 12px; color: #666; margin-top: -10px; margin-bottom: 15px; }
+.progress {
+    display: none;
+    margin-top: 15px;
+    padding: 12px;
+    background: #fff3e0;
+    border-radius: 4px;
+}
+.progress.active { display: block; }
+.progress-label { font-weight: 600; color: #6d4c41; margin-bottom: 8px; }
+.progress-hint { font-size: 12px; color: #6d4c41; margin-top: 8px; }
+.progress-bar {
+    position: relative;
+    height: 6px;
+    background: #ffe0b2;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.progress-bar-inner {
+    position: absolute;
+    left: -40%;
+    width: 40%;
+    height: 100%;
+    background: #4CAF50;
+    animation: progress-slide 1.2s ease-in-out infinite;
+}
+@keyframes progress-slide {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(350%); }
+}
 .tabs { display: flex; gap: 5px; margin-bottom: 0; }
 .tab {
     padding: 10px 20px;
