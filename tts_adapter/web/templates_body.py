@@ -1,0 +1,151 @@
+"""HTML body for web UI."""
+
+INDEX_BODY = """
+    <h1>TTS Adapter</h1>
+    <p class="subtitle">Text-to-Speech Generation</p>
+
+    <div id="status" class="status">Checking server status...</div>
+
+    <div class="model-selector">
+        <label for="model-select">Model:</label>
+        <select id="model-select" onchange="onModelSelect(this.value)" title="Switch TTS model (reloads server)">
+            <option value="">Loading...</option>
+        </select>
+        <button type="button" class="model-help" onclick="openModelHelp()" title="Model guide" aria-label="Model guide">?</button>
+        <span id="model-features" title="Capabilities for selected model"></span>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Switching model...</div>
+        <div class="loading-hint">This may take 1-2 minutes. Please wait.</div>
+    </div>
+
+    <!-- Confirmation modal -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal">
+            <h3>Switch Model?</h3>
+            <p id="modal-message">This will reload the TTS model. The server will be unavailable for ~2 minutes during reload.</p>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="cancelSwitch()" title="Cancel model switch" type="button">Cancel</button>
+                <button class="btn-confirm" onclick="confirmSwitch()" title="Confirm model switch" type="button">Switch Model</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Model help modal -->
+    <div id="model-help-overlay" class="modal-overlay">
+        <div class="modal">
+            <h3>Model Guide</h3>
+            <div id="model-help-list">Loading model info...</div>
+            <div class="modal-buttons">
+                <button class="btn-confirm" onclick="closeModelHelp()" title="Close model guide" type="button">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="tabs">
+            <button class="tab active" data-tab="simple" onclick="switchTab('simple')" title="Simple TTS (CustomVoice model)" data-default-title="Simple TTS (CustomVoice model)" type="button">Simple</button>
+            <button class="tab" data-tab="design" onclick="switchTab('design')" title="Voice Design (VoiceDesign model)" data-default-title="Voice Design (VoiceDesign model)" type="button">Voice Design</button>
+            <button class="tab" data-tab="clone" onclick="switchTab('clone')" title="Voice Clone (Base model)" data-default-title="Voice Clone (Base model)" type="button">Voice Clone</button>
+        </div>
+
+        <!-- Simple TTS Tab -->
+        <div id="tab-simple" class="tab-content active">
+            <label for="text">Text to speak</label>
+            <textarea id="text" placeholder="Enter text here..." title="Required text to synthesize"></textarea>
+
+            <div class="row">
+                <div>
+                    <label for="language">Language</label>
+                    <select id="language" title="Language for output speech">
+                        <option value="Russian">Russian</option>
+                        <option value="English">English</option>
+                        <option value="Chinese">Chinese</option>
+                        <option value="Japanese">Japanese</option>
+                        <option value="Korean">Korean</option>
+                        <option value="German">German</option>
+                        <option value="French">French</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="Italian">Italian</option>
+                        <option value="Portuguese">Portuguese</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="speaker">Speaker</label>
+                    <select id="speaker" title="Preset speaker (CustomVoice model)">
+                        <option value="Serena">Serena (Female, warm)</option>
+                        <option value="Sohee">Sohee (Female, emotional)</option>
+                        <option value="Vivian">Vivian (Female, bright)</option>
+                        <option value="Ono_Anna">Ono_Anna (Female, playful)</option>
+                        <option value="Ryan">Ryan (Male, dynamic)</option>
+                        <option value="Aiden">Aiden (Male, clear)</option>
+                        <option value="Uncle_Fu">Uncle_Fu (Male, mellow)</option>
+                        <option value="Dylan">Dylan (Male, youthful)</option>
+                        <option value="Eric">Eric (Male, lively)</option>
+                    </select>
+                </div>
+            </div>
+
+            <label for="instruct">Style instruction (optional)</label>
+            <input type="text" id="instruct" placeholder="e.g., Speak slowly and warmly" title="Optional style instruction (CustomVoice model)">
+            <p class="hint">Control tone, emotion, speed. Works with CustomVoice model only.</p>
+
+            <button onclick="generateSimple()" title="Generate speech with current settings" type="button">Generate Speech</button>
+        </div>
+
+        <!-- Voice Design Tab -->
+        <div id="tab-design" class="tab-content">
+            <label for="design-text">Text to speak</label>
+            <textarea id="design-text" placeholder="Enter text here..." title="Required text to synthesize"></textarea>
+
+            <label for="design-language">Language</label>
+            <select id="design-language" title="Language for output speech">
+                <option value="Russian">Russian</option>
+                <option value="English">English</option>
+                <option value="Chinese">Chinese</option>
+            </select>
+
+            <label for="design-instruct">Voice description (required)</label>
+            <textarea id="design-instruct" placeholder="e.g., Adult female voice, contralto range, warm and confident, expressive" title="Required voice description (VoiceDesign model)"></textarea>
+            <p class="hint">Describe the voice: gender, age, pitch, timbre, emotion, pace.</p>
+
+            <button onclick="generateDesign()" title="Generate speech with designed voice" type="button">Generate with Designed Voice</button>
+        </div>
+
+        <!-- Voice Clone Tab -->
+        <div id="tab-clone" class="tab-content">
+            <label for="clone-text">Text to speak</label>
+            <textarea id="clone-text" placeholder="Enter text here..." title="Required text to synthesize"></textarea>
+
+            <label for="clone-language">Language</label>
+            <select id="clone-language" title="Language for output speech">
+                <option value="Russian">Russian</option>
+                <option value="English">English</option>
+                <option value="Chinese">Chinese</option>
+            </select>
+
+            <label for="clone-audio">Reference audio (WAV, 3-10 sec)</label>
+            <input type="file" id="clone-audio" accept=".wav,audio/wav" title="Required WAV file, 3-10 seconds">
+
+            <label for="clone-ref-text">Reference transcript (optional, improves quality)</label>
+            <input type="text" id="clone-ref-text" placeholder="What is said in the reference audio" title="Optional transcript of the reference audio">
+
+            <button onclick="generateClone()" title="Generate speech with cloned voice" type="button">Generate with Cloned Voice</button>
+        </div>
+
+        <div id="result" class="result">
+            <strong>Result:</strong>
+            <audio id="audio" controls></audio>
+            <br>
+            <a id="download" class="download-btn" download="tts_output.wav" title="Download generated WAV">Download WAV</a>
+        </div>
+    </div>
+
+    <p style="text-align: center; color: #999; font-size: 12px;">
+        <a href="/docs" style="color: #666;">API Documentation</a> |
+        <a href="/health" style="color: #666;">Health Check</a>
+    </p>
+"""
