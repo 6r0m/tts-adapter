@@ -28,6 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     tini \
     ca-certificates \
+    sox \
+    libsox-fmt-all \
  && rm -rf /var/lib/apt/lists/* \
  && ln -s /usr/bin/python3.10 /usr/bin/python
 
@@ -51,7 +53,7 @@ FROM deps AS user_setup
 ARG USER=app
 ARG UID=10001
 RUN useradd -m -u ${UID} -s /bin/bash ${USER}
-RUN install -d -o ${UID} -g ${UID} /work /home/${USER}/.cache/huggingface
+RUN install -d -o ${UID} -g ${UID} /work /home/${USER}/.cache/huggingface /home/${USER}/.cache/numba
 
 # Runtime stage: Application code only (most frequently changed)
 FROM user_setup AS runtime
@@ -64,7 +66,8 @@ COPY --chown=${UID}:${UID} scripts/ ./scripts/
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app" \
-    HF_HOME="/home/app/.cache/huggingface"
+    HF_HOME="/home/app/.cache/huggingface" \
+    NUMBA_CACHE_DIR="/home/app/.cache/numba"
 
 USER ${USER}
 EXPOSE 9880

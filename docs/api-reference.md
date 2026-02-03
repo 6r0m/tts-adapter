@@ -2,7 +2,35 @@
 
 Base URL: `http://localhost:9880`
 
-## Endpoints
+## Web UI
+
+Access the web interface at **http://localhost:9880/** for easy TTS generation without coding.
+
+### Features
+
+- **Simple TTS** - Select speaker, language, enter text, generate speech
+- **Voice Design** - Create custom voices from text descriptions
+- **Voice Clone** - Clone voice from audio sample (requires Base model)
+- **Audio Player** - Listen to results directly in browser
+- **Download** - Save generated WAV files
+
+### Screenshots
+
+The UI has three tabs:
+
+| Tab | Description | Model Required |
+|-----|-------------|----------------|
+| Simple | Preset speakers + style instructions | CustomVoice |
+| Voice Design | Create voice from description | VoiceDesign |
+| Voice Clone | Clone from audio sample | Base |
+
+### Status Bar
+
+Shows server info: engine, model, and supported features (cloning/design).
+
+---
+
+## API Endpoints
 
 ### GET /health
 
@@ -14,9 +42,20 @@ Health check with model info.
   "ok": true,
   "engine": "qwen3",
   "model": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-  "device": "cuda:0"
+  "device": "cuda:0",
+  "supports_cloning": false,
+  "supports_design": false
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| ok | Always true if server is healthy |
+| engine | Engine name (e.g., "qwen3") |
+| model | Loaded model ID |
+| device | Device (e.g., "cuda:0", "cpu") |
+| supports_cloning | Whether `/tts/clone` is available |
+| supports_design | Whether `/tts/design` is available |
 
 ### POST /tts
 
@@ -86,6 +125,60 @@ curl -X POST http://localhost:9880/tts/batch \
 unzip batch.zip -d output/
 ```
 
+### POST /tts/design
+
+Generate speech with a custom voice created from text description.
+
+**Requires:** VoiceDesign model (`TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign`)
+
+**Request:** `multipart/form-data`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| text | string | required | Text to synthesize |
+| instruct | string | required | Voice description (see [Voice Design Guide](engines/qwen3.md#voice-design)) |
+| language | string | "Auto" | Language code |
+
+**Response:** `audio/wav` binary
+
+**Example:**
+```bash
+curl -X POST http://localhost:9880/tts/design \
+  -F 'text=Привет мир' \
+  -F 'language=Russian' \
+  -F 'instruct=Adult female voice, contralto range, warm and confident' \
+  --output designed.wav
+```
+
+### POST /tts/clone
+
+Clone a voice from reference audio sample.
+
+**Requires:** Base model (`TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-Base`)
+
+**Request:** `multipart/form-data`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| text | string | required | Text to synthesize |
+| reference_audio | file | required | WAV file (3-10 seconds) |
+| reference_text | string | "" | Transcript of reference audio (improves quality) |
+| language | string | "Auto" | Language code |
+
+**Response:** `audio/wav` binary
+
+**Example:**
+```bash
+curl -X POST http://localhost:9880/tts/clone \
+  -F 'text=Привет мир' \
+  -F 'language=Russian' \
+  -F 'reference_audio=@voice_sample.wav' \
+  -F 'reference_text=Hello world' \
+  --output cloned.wav
+```
+
+---
+
 ## Error Responses
 
 Standard HTTP error codes with JSON body:
@@ -98,5 +191,5 @@ Standard HTTP error codes with JSON body:
 
 | Code | Description |
 |------|-------------|
-| 400 | Invalid request |
+| 400 | Invalid request or unsupported feature |
 | 500 | Internal server error |

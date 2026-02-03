@@ -205,10 +205,40 @@ async function checkStatus() {
         serverInfo = data;
         status.className = 'status ok';
         status.innerHTML = `<strong>Server OK</strong> | Engine: ${data.engine} | Model: ${data.model.split('/').pop()} | ` +
-            `Cloning: ${data.supports_cloning ? 'Yes' : 'No'} | Design: ${data.supports_design ? 'Yes' : 'No'}`;
+            `Simple: ${data.supports_custom_voice ? 'Yes' : 'No'} | Design: ${data.supports_design ? 'Yes' : 'No'} | Clone: ${data.supports_cloning ? 'Yes' : 'No'}`;
+        updateTabAvailability(data);
     } catch (e) {
         status.className = 'status error';
         status.textContent = 'Server not responding. Start with: make serve';
+    }
+}
+
+function updateTabAvailability(data) {
+    const simpleTab = document.querySelector('[onclick="switchTab(\\'simple\\')"]');
+    const designTab = document.querySelector('[onclick="switchTab(\\'design\\')"]');
+    const cloneTab = document.querySelector('[onclick="switchTab(\\'clone\\')"]');
+
+    // Style unavailable tabs as disabled
+    if (!data.supports_custom_voice) {
+        simpleTab.style.opacity = '0.5';
+        simpleTab.title = 'Requires CustomVoice model';
+    }
+    if (!data.supports_design) {
+        designTab.style.opacity = '0.5';
+        designTab.title = 'Requires VoiceDesign model';
+    }
+    if (!data.supports_cloning) {
+        cloneTab.style.opacity = '0.5';
+        cloneTab.title = 'Requires Base model';
+    }
+
+    // Auto-switch to first available tab
+    if (!data.supports_custom_voice) {
+        if (data.supports_design) {
+            switchTab('design');
+        } else if (data.supports_cloning) {
+            switchTab('clone');
+        }
     }
 }
 

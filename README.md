@@ -5,6 +5,7 @@ Universal text-to-speech adapter with pluggable engines.
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Web UI](#web-ui)
 - [Configuration](#configuration)
 - [Docker](#docker)
 - [API Usage](#api-usage)
@@ -50,6 +51,22 @@ make download-model     # Downloads to ~/.cache/tts-adapter/models/
 ```
 
 See [Qwen3 Engine docs](docs/engines/qwen3.md#offline-mode) for details.
+
+## Web UI
+
+Open **http://localhost:9880** in your browser for a simple web interface.
+
+### Features
+
+| Tab | Description | Model |
+|-----|-------------|-------|
+| **Simple** | Preset speakers + style instructions | CustomVoice |
+| **Voice Design** | Create voice from text description | VoiceDesign |
+| **Voice Clone** | Clone from audio sample | Base |
+
+The status bar shows current engine, model, and available features.
+
+For API access, see [API Reference](docs/api-reference.md). Swagger docs available at `/docs`.
 
 ## Configuration
 

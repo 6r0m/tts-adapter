@@ -303,6 +303,12 @@ class Qwen3Engine:
         return "VoiceDesign" in model_id
 
     @property
+    def supports_custom_voice(self) -> bool:
+        """Check if loaded model supports preset speakers (CustomVoice)."""
+        model_id = str(self._model_path or self._model_id or "")
+        return "CustomVoice" in model_id
+
+    @property
     def engine_name(self) -> str:
         """Return engine identifier."""
         return "qwen3"

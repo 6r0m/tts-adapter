@@ -44,3 +44,4 @@ class HealthResponse(BaseModel):
     device: str
     supports_cloning: bool = Field(default=False, description="Whether voice cloning is supported")
     supports_design: bool = Field(default=False, description="Whether voice design is supported")
+    supports_custom_voice: bool = Field(default=False, description="Whether preset speakers are supported")

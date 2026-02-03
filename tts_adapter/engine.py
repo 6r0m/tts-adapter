@@ -82,6 +82,11 @@ class TTSEngine(Protocol):
         """Whether this engine/model supports voice design from description."""
         ...
 
+    @property
+    def supports_custom_voice(self) -> bool:
+        """Whether this engine/model supports preset speakers (Simple TTS)."""
+        ...
+
     def synthesize_clone(
         self,
         text: str,

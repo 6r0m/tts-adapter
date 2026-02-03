@@ -56,6 +56,7 @@ def health() -> HealthResponse:
         device=engine.device,
         supports_cloning=engine.supports_cloning,
         supports_design=engine.supports_design,
+        supports_custom_voice=engine.supports_custom_voice,
     )
 
 
