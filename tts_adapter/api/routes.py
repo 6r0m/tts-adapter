@@ -10,9 +10,9 @@ from fastapi.responses import Response
 
 from ..config import get_settings
 from ..contract import HealthResponse, TTSBatchRequest, TTSRequest
-from ..engines.qwen3 import Qwen3Engine
 from ..engine import TTSEngine
 from ..engines import create_engine
+from ..web import router as web_router
 
 # Global engine instance
 _engine: TTSEngine | None = None
@@ -41,23 +41,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Mount web UI
+app.include_router(web_router)
+
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     """Health check with model info."""
     engine = get_engine()
-    supports_cloning = False
-    supports_design = False
-    if isinstance(engine, Qwen3Engine):
-        supports_cloning = engine.supports_cloning
-        supports_design = engine.supports_design
     return HealthResponse(
         ok=True,
         engine=engine.engine_name,
         model=engine.model_id,
         device=engine.device,
-        supports_cloning=supports_cloning,
-        supports_design=supports_design,
+        supports_cloning=engine.supports_cloning,
+        supports_design=engine.supports_design,
     )
 
 
@@ -133,18 +131,15 @@ async def tts_clone(
 ) -> Response:
     """Generate speech by cloning voice from reference audio.
 
-    Requires Base model (not CustomVoice). Set TTS_QWEN3_MODEL_ID to a Base model.
-    Provide reference_text (transcript) for better quality, or omit for x_vector_only mode.
+    Requires a model that supports voice cloning (e.g., Base model).
+    Provide reference_text (transcript) for better quality.
     """
     engine = get_engine()
-
-    if not isinstance(engine, Qwen3Engine):
-        raise HTTPException(status_code=400, detail="Voice cloning only supported by Qwen3 engine")
 
     if not engine.supports_cloning:
         raise HTTPException(
             status_code=400,
-            detail="Voice cloning requires Base model. Set TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+            detail="Voice cloning not supported by current model configuration",
         )
 
     audio_bytes = await reference_audio.read()
@@ -165,17 +160,14 @@ def tts_design(
 ) -> Response:
     """Generate speech with a designed voice from natural language description.
 
-    Requires VoiceDesign model. Set TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign
+    Requires a model that supports voice design (e.g., VoiceDesign model).
     """
     engine = get_engine()
-
-    if not isinstance(engine, Qwen3Engine):
-        raise HTTPException(status_code=400, detail="Voice design only supported by Qwen3 engine")
 
     if not engine.supports_design:
         raise HTTPException(
             status_code=400,
-            detail="Voice design requires VoiceDesign model. Set TTS_QWEN3_MODEL_ID=Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            detail="Voice design not supported by current model configuration",
         )
 
     wav_bytes = engine.synthesize_design(

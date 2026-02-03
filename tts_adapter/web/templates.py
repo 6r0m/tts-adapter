@@ -1,0 +1,330 @@
+"""HTML templates for web UI."""
+
+INDEX_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS Adapter</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; margin-bottom: 5px; }
+        .subtitle { color: #666; margin-bottom: 20px; }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        label { display: block; margin-bottom: 5px; font-weight: 500; color: #333; }
+        textarea, input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        textarea { min-height: 100px; resize: vertical; }
+        .row { display: flex; gap: 15px; }
+        .row > div { flex: 1; }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover { background: #45a049; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f5e9;
+            border-radius: 4px;
+            display: none;
+        }
+        .result.error { background: #ffebee; }
+        audio { width: 100%; margin: 10px 0; }
+        .download-btn {
+            background: #2196F3;
+            display: inline-block;
+            padding: 8px 16px;
+            text-decoration: none;
+            color: white;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .status { padding: 10px; background: #e3f2fd; border-radius: 4px; margin-bottom: 15px; font-size: 13px; }
+        .status.ok { background: #e8f5e9; }
+        .status.error { background: #ffebee; }
+        .hint { font-size: 12px; color: #666; margin-top: -10px; margin-bottom: 15px; }
+        .tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+        .tab {
+            padding: 8px 16px;
+            background: #e0e0e0;
+            border: none;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+        }
+        .tab.active { background: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <h1>TTS Adapter</h1>
+    <p class="subtitle">Text-to-Speech Generation</p>
+
+    <div id="status" class="status">Checking server status...</div>
+
+    <div class="card">
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('simple')">Simple</button>
+            <button class="tab" onclick="switchTab('design')">Voice Design</button>
+            <button class="tab" onclick="switchTab('clone')">Voice Clone</button>
+        </div>
+
+        <!-- Simple TTS Tab -->
+        <div id="tab-simple" class="tab-content active">
+            <label for="text">Text to speak</label>
+            <textarea id="text" placeholder="Enter text here..."></textarea>
+
+            <div class="row">
+                <div>
+                    <label for="language">Language</label>
+                    <select id="language">
+                        <option value="Russian">Russian</option>
+                        <option value="English">English</option>
+                        <option value="Chinese">Chinese</option>
+                        <option value="Japanese">Japanese</option>
+                        <option value="Korean">Korean</option>
+                        <option value="German">German</option>
+                        <option value="French">French</option>
+                        <option value="Spanish">Spanish</option>
+                        <option value="Italian">Italian</option>
+                        <option value="Portuguese">Portuguese</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="speaker">Speaker</label>
+                    <select id="speaker">
+                        <option value="Serena">Serena (Female, warm)</option>
+                        <option value="Sohee">Sohee (Female, emotional)</option>
+                        <option value="Vivian">Vivian (Female, bright)</option>
+                        <option value="Ono_Anna">Ono_Anna (Female, playful)</option>
+                        <option value="Ryan">Ryan (Male, dynamic)</option>
+                        <option value="Aiden">Aiden (Male, clear)</option>
+                        <option value="Uncle_Fu">Uncle_Fu (Male, mellow)</option>
+                        <option value="Dylan">Dylan (Male, youthful)</option>
+                        <option value="Eric">Eric (Male, lively)</option>
+                    </select>
+                </div>
+            </div>
+
+            <label for="instruct">Style instruction (optional)</label>
+            <input type="text" id="instruct" placeholder="e.g., Speak slowly and warmly">
+            <p class="hint">Control tone, emotion, speed. Works with CustomVoice model only.</p>
+
+            <button onclick="generateSimple()">Generate Speech</button>
+        </div>
+
+        <!-- Voice Design Tab -->
+        <div id="tab-design" class="tab-content">
+            <label for="design-text">Text to speak</label>
+            <textarea id="design-text" placeholder="Enter text here..."></textarea>
+
+            <label for="design-language">Language</label>
+            <select id="design-language">
+                <option value="Russian">Russian</option>
+                <option value="English">English</option>
+                <option value="Chinese">Chinese</option>
+            </select>
+
+            <label for="design-instruct">Voice description (required)</label>
+            <textarea id="design-instruct" placeholder="e.g., Adult female voice, contralto range, warm and confident, expressive"></textarea>
+            <p class="hint">Describe the voice: gender, age, pitch, timbre, emotion, pace.</p>
+
+            <button onclick="generateDesign()">Generate with Designed Voice</button>
+        </div>
+
+        <!-- Voice Clone Tab -->
+        <div id="tab-clone" class="tab-content">
+            <label for="clone-text">Text to speak</label>
+            <textarea id="clone-text" placeholder="Enter text here..."></textarea>
+
+            <label for="clone-language">Language</label>
+            <select id="clone-language">
+                <option value="Russian">Russian</option>
+                <option value="English">English</option>
+                <option value="Chinese">Chinese</option>
+            </select>
+
+            <label for="clone-audio">Reference audio (WAV, 3-10 sec)</label>
+            <input type="file" id="clone-audio" accept=".wav,audio/wav">
+
+            <label for="clone-ref-text">Reference transcript (optional, improves quality)</label>
+            <input type="text" id="clone-ref-text" placeholder="What is said in the reference audio">
+
+            <button onclick="generateClone()">Generate with Cloned Voice</button>
+        </div>
+
+        <div id="result" class="result">
+            <strong>Result:</strong>
+            <audio id="audio" controls></audio>
+            <br>
+            <a id="download" class="download-btn" download="tts_output.wav">Download WAV</a>
+        </div>
+    </div>
+
+    <p style="text-align: center; color: #999; font-size: 12px;">
+        <a href="/docs" style="color: #666;">API Documentation</a> |
+        <a href="/health" style="color: #666;">Health Check</a>
+    </p>
+
+<script>
+let serverInfo = {};
+
+async function checkStatus() {
+    const status = document.getElementById('status');
+    try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        serverInfo = data;
+        status.className = 'status ok';
+        status.innerHTML = `<strong>Server OK</strong> | Engine: ${data.engine} | Model: ${data.model.split('/').pop()} | ` +
+            `Cloning: ${data.supports_cloning ? 'Yes' : 'No'} | Design: ${data.supports_design ? 'Yes' : 'No'}`;
+    } catch (e) {
+        status.className = 'status error';
+        status.textContent = 'Server not responding. Start with: make serve';
+    }
+}
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelector(`[onclick="switchTab('${tab}')"]`).classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+    document.getElementById('result').style.display = 'none';
+}
+
+function showResult(blob) {
+    const url = URL.createObjectURL(blob);
+    document.getElementById('audio').src = url;
+    document.getElementById('download').href = url;
+    document.getElementById('result').className = 'result';
+    document.getElementById('result').style.display = 'block';
+}
+
+function showError(msg) {
+    document.getElementById('result').className = 'result error';
+    document.getElementById('result').innerHTML = '<strong>Error:</strong> ' + msg;
+    document.getElementById('result').style.display = 'block';
+}
+
+async function generateSimple() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+        const res = await fetch('/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: document.getElementById('text').value,
+                language: document.getElementById('language').value,
+                speaker: document.getElementById('speaker').value,
+                instruct: document.getElementById('instruct').value
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Generation failed');
+        }
+
+        showResult(await res.blob());
+    } catch (e) {
+        showError(e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate Speech';
+    }
+}
+
+async function generateDesign() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+        const form = new FormData();
+        form.append('text', document.getElementById('design-text').value);
+        form.append('language', document.getElementById('design-language').value);
+        form.append('instruct', document.getElementById('design-instruct').value);
+
+        const res = await fetch('/tts/design', { method: 'POST', body: form });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Generation failed');
+        }
+
+        showResult(await res.blob());
+    } catch (e) {
+        showError(e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate with Designed Voice';
+    }
+}
+
+async function generateClone() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+        const audioFile = document.getElementById('clone-audio').files[0];
+        if (!audioFile) throw new Error('Please select a reference audio file');
+
+        const form = new FormData();
+        form.append('text', document.getElementById('clone-text').value);
+        form.append('language', document.getElementById('clone-language').value);
+        form.append('reference_audio', audioFile);
+        form.append('reference_text', document.getElementById('clone-ref-text').value);
+
+        const res = await fetch('/tts/clone', { method: 'POST', body: form });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Generation failed');
+        }
+
+        showResult(await res.blob());
+    } catch (e) {
+        showError(e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate with Cloned Voice';
+    }
+}
+
+checkStatus();
+</script>
+</body>
+</html>
+"""

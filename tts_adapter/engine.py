@@ -71,3 +71,57 @@ class TTSEngine(Protocol):
     def device(self) -> str:
         """Return device string (e.g., 'cuda:0', 'cpu')."""
         ...
+
+    @property
+    def supports_cloning(self) -> bool:
+        """Whether this engine/model supports voice cloning."""
+        ...
+
+    @property
+    def supports_design(self) -> bool:
+        """Whether this engine/model supports voice design from description."""
+        ...
+
+    def synthesize_clone(
+        self,
+        text: str,
+        reference_audio: bytes,
+        language: str = "Auto",
+        reference_text: str | None = None,
+    ) -> bytes:
+        """Clone voice from reference audio.
+
+        Args:
+            text: Text to synthesize
+            reference_audio: WAV bytes of reference voice (3-10 sec)
+            language: Language code
+            reference_text: Optional transcript of reference audio
+
+        Returns:
+            WAV audio bytes
+
+        Raises:
+            NotImplementedError: If engine doesn't support cloning
+        """
+        ...
+
+    def synthesize_design(
+        self,
+        text: str,
+        instruct: str,
+        language: str = "Auto",
+    ) -> bytes:
+        """Generate speech with voice designed from description.
+
+        Args:
+            text: Text to synthesize
+            instruct: Natural language voice description
+            language: Language code
+
+        Returns:
+            WAV audio bytes
+
+        Raises:
+            NotImplementedError: If engine doesn't support voice design
+        """
+        ...
