@@ -20,6 +20,20 @@ Qwen3-TTS is Alibaba's text-to-speech model with:
 
 For RTX 4070 (12GB), use 1.7B model with bf16.
 
+### Model Capabilities
+
+| Feature | CustomVoice | Base | VoiceDesign |
+|---------|:-----------:|:----:|:-----------:|
+| Preset speakers (Serena, Ryan, etc.) | ✅ | ❌ | ❌ |
+| Emotion/style via `instruct` | ✅ | ❌ | ✅ (in description) |
+| Voice cloning from audio | ❌ | ✅ | ❌ |
+| Create voice from description | ❌ | ❌ | ✅ |
+| Batch generation | ✅ | ✅ | ✅ |
+
+**Limitation:** Cannot combine cloned voice with emotion control. Each model has separate capabilities:
+- Want emotion control? → Use CustomVoice (preset speakers) or VoiceDesign (create new voice)
+- Want specific person's voice? → Use Base (clone), but no emotion control
+
 ## Configuration
 
 Engine-specific env vars (namespaced with `TTS_QWEN3_`):
@@ -151,15 +165,98 @@ make tts-design text="Hello" instruct="Deep male voice, professional newsreader"
 
 ```bash
 curl -X POST http://localhost:9880/tts/design \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "text": "Привет мир",
-    "language": "Russian",
-    "instruct": "Young female voice, warm and expressive"
-  }' --output designed.wav
+  -F 'text=Привет мир' \
+  -F 'language=Russian' \
+  -F 'instruct=Young female voice, warm and expressive' \
+  --output designed.wav
 ```
 
-### Instruct Examples for Voice Design
+### Crafting Voice Descriptions
+
+The `instruct` parameter accepts natural language descriptions. Include these elements:
+
+| Element | Examples | Effect |
+|---------|----------|--------|
+| **Gender** | "female", "male", "woman", "man" | Base voice type |
+| **Age** | "young", "mature", "in her 30s", "elderly" | Voice maturity |
+| **Pitch** | "high-pitched", "low voice", "contralto", "bass" | Vocal range |
+| **Timbre** | "warm", "husky", "bright", "rich", "throaty" | Voice texture |
+| **Emotion** | "confident", "friendly", "sensual", "commanding" | Personality |
+| **Dynamics** | "expressive", "dynamic intonation", "monotone" | Variation |
+| **Pace** | "slow deliberate", "fast energetic", "natural rhythm" | Speed |
+
+### Common Pitfalls
+
+**Problem: Got male voice when wanting female**
+
+The model interprets "deep", "low pitch", "husky" as male. Fix with musical terms:
+
+```bash
+# BAD - may produce male voice
+--instruct "Deep husky voice, low pitch, commanding"
+
+# GOOD - explicitly female with contralto (lowest female voice type)
+--instruct "Adult female voice, contralto range, rich warm timbre, confident"
+```
+
+**Problem: Voice too childish/high**
+
+Add maturity descriptors:
+
+```bash
+# BAD - may be too high
+--instruct "Female voice, warm and friendly"
+
+# GOOD - specify age and maturity
+--instruct "Mature woman in her 30s, rich warm timbre, confident"
+```
+
+**Problem: Voice is monotone/flat**
+
+Add expression descriptors:
+
+```bash
+# BAD - may be flat
+--instruct "Female voice, professional"
+
+# GOOD - add dynamics
+--instruct "Female voice, professional, expressive with dynamic intonation, varied rhythm"
+```
+
+### Tested Voice Recipes
+
+**Attractive mature female (Angelina Jolie style):**
+```
+Adult female voice, contralto range, rich and warm timbre, confident woman
+in her 30s, slightly husky but distinctly feminine, emotionally expressive
+with dynamic intonation, charismatic and engaging, sensual undertone
+```
+
+**Professional female narrator:**
+```
+Adult female voice, mezzo-soprano, clear and articulate, professional tone,
+warm but authoritative, natural pace with good rhythm
+```
+
+**Energetic young female:**
+```
+Young woman in her 20s, bright voice, energetic and enthusiastic,
+friendly and warm, natural expressiveness
+```
+
+**Deep authoritative male:**
+```
+Mature male voice, bass range, deep and resonant, authoritative and
+commanding, professional newsreader style, clear articulation
+```
+
+**Warm storyteller:**
+```
+Adult female voice, warm rich timbre, charismatic storyteller energy,
+emotionally engaging, varied rhythm with natural pauses, captivating presence
+```
+
+### Simple Examples
 
 | Description | Result |
 |-------------|--------|
@@ -169,7 +266,15 @@ curl -X POST http://localhost:9880/tts/design \
 | `"Teen male, energetic, gaming streamer"` | Youthful excited male |
 | `"体现撒娇稚嫩的萝莉女声"` | Chinese: cute young girl voice |
 
-**Tip:** VoiceDesign + Clone workflow: Generate a voice you like with VoiceDesign, save it, then use it as reference for cloning to reuse consistently.
+### Voice Design Workflow
+
+1. **Start simple** - begin with basic description
+2. **Listen and iterate** - adjust based on what you hear
+3. **Add specifics** - pitch, timbre, emotion, dynamics
+4. **Save good results** - keep the WAV file
+5. **Clone for consistency** - use saved WAV as reference with Base model
+
+**Tip:** VoiceDesign creates unique voices each run. For consistent voice across texts, generate one you like, save it, then clone it with Base model.
 
 ## Voice Cloning
 
