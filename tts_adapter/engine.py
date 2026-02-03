@@ -130,3 +130,13 @@ class TTSEngine(Protocol):
             NotImplementedError: If engine doesn't support voice design
         """
         ...
+
+    def reload(self, model_id: str) -> None:
+        """Reload engine with a different model.
+
+        Unloads current model and loads the specified model.
+
+        Args:
+            model_id: New model ID to load
+        """
+        ...

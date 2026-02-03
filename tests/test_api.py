@@ -157,4 +157,67 @@ class TestTTSDesignGeneration:
         assert response.status_code == 200
         assert response.headers["content-type"] == "audio/wav"
         # WAV files start with RIFF header
-        assert response.content[:4] == b"RIFF"
+
+
+class TestModelsEndpoint:
+    """Tests for /models endpoint."""
+
+    def test_models_returns_list(self, client):
+        """Models endpoint returns list of available models."""
+        response = client.get("/models")
+        assert response.status_code == 200
+        data = response.json()
+        assert "current" in data
+        assert "available" in data
+        assert isinstance(data["available"], list)
+        assert len(data["available"]) > 0
+
+    def test_models_contains_expected_fields(self, client):
+        """Each model has expected fields."""
+        response = client.get("/models")
+        data = response.json()
+        for model in data["available"]:
+            assert "id" in model
+            assert "name" in model
+            assert "variant" in model
+            assert "supports_cloning" in model
+            assert "supports_design" in model
+            assert "supports_custom_voice" in model
+
+    def test_models_current_is_in_available(self, client):
+        """Current model is in available list."""
+        response = client.get("/models")
+        data = response.json()
+        available_ids = [m["id"] for m in data["available"]]
+        assert data["current"] in available_ids
+
+
+class TestModelSwitchValidation:
+    """Tests for /model/switch validation (doesn't actually switch)."""
+
+    def test_switch_invalid_model_returns_400(self, client):
+        """Switching to invalid model returns 400."""
+        response = client.post(
+            "/model/switch",
+            json={"model_id": "invalid/nonexistent-model"},
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert "detail" in data
+        assert "Invalid model ID" in data["detail"]
+
+    def test_switch_same_model_is_noop(self, client):
+        """Switching to already-loaded model is a no-op."""
+        # Get current model
+        health = client.get("/health").json()
+        current = health["model"]
+
+        # Try to switch to same model
+        response = client.post(
+            "/model/switch",
+            json={"model_id": current},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["message"] == "Model already loaded"

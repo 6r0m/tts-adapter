@@ -322,3 +322,29 @@ class Qwen3Engine:
     def device(self) -> str:
         """Return device string."""
         return self._device
+
+    def reload(self, model_id: str) -> None:
+        """Reload engine with a different model.
+
+        Unloads current model from GPU memory and loads the new model.
+
+        Args:
+            model_id: New model ID (e.g., 'Qwen/Qwen3-TTS-12Hz-1.7B-Base')
+        """
+        with self._lock:
+            # Unload current model
+            if self._model is not None:
+                del self._model
+                self._model = None
+                # Force garbage collection to free GPU memory
+                import gc
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+            # Update model ID
+            self._model_id = model_id
+            self._model_path = None  # Clear local path, use HF ID
+
+        # Load new model
+        self.warmup()

@@ -92,6 +92,91 @@ INDEX_HTML = """
         }
         .tab-content { display: none; border-top: 1px solid #ccc; padding-top: 15px; }
         .tab-content.active { display: block; }
+        /* Model selector */
+        .model-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #fff3e0;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .model-selector select {
+            width: auto;
+            margin: 0;
+            padding: 5px 10px;
+            font-size: 13px;
+        }
+        .model-selector label {
+            margin: 0;
+            font-weight: 600;
+        }
+        /* Modal dialog */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 450px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .modal h3 { margin-top: 0; color: #f57c00; }
+        .modal p { color: #666; line-height: 1.5; }
+        .modal-buttons { display: flex; gap: 10px; margin-top: 20px; }
+        .modal-buttons button { flex: 1; }
+        .btn-cancel { background: #9e9e9e; }
+        .btn-cancel:hover { background: #757575; }
+        .btn-confirm { background: #f57c00; }
+        .btn-confirm:hover { background: #ef6c00; }
+        /* Loading overlay */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.95);
+            z-index: 2000;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-overlay.active { display: flex; }
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #e0e0e0;
+            border-top-color: #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+        }
+        .loading-hint {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -99,6 +184,33 @@ INDEX_HTML = """
     <p class="subtitle">Text-to-Speech Generation</p>
 
     <div id="status" class="status">Checking server status...</div>
+
+    <div class="model-selector">
+        <label>Model:</label>
+        <select id="model-select" onchange="onModelSelect(this.value)">
+            <option value="">Loading...</option>
+        </select>
+        <span id="model-features"></span>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Switching model...</div>
+        <div class="loading-hint">This may take 1-2 minutes. Please wait.</div>
+    </div>
+
+    <!-- Confirmation modal -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal">
+            <h3>Switch Model?</h3>
+            <p id="modal-message">This will reload the TTS model. The server will be unavailable for ~2 minutes during reload.</p>
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="cancelSwitch()">Cancel</button>
+                <button class="btn-confirm" onclick="confirmSwitch()">Switch Model</button>
+            </div>
+        </div>
+    </div>
 
     <div class="card">
         <div class="tabs">
@@ -206,6 +318,8 @@ INDEX_HTML = """
 
 <script>
 let serverInfo = {};
+let availableModels = [];
+let pendingModelId = null;
 
 async function checkStatus() {
     const status = document.getElementById('status');
@@ -214,12 +328,99 @@ async function checkStatus() {
         const data = await res.json();
         serverInfo = data;
         status.className = 'status ok';
-        status.innerHTML = `<strong>Server OK</strong> | Engine: ${data.engine} | Model: ${data.model.split('/').pop()} | ` +
-            `Simple: ${data.supports_custom_voice ? 'Yes' : 'No'} | Design: ${data.supports_design ? 'Yes' : 'No'} | Clone: ${data.supports_cloning ? 'Yes' : 'No'}`;
+        status.innerHTML = `<strong>Server OK</strong> | Engine: ${data.engine} | ` +
+            `Simple: ${data.supports_custom_voice ? 'Yes' : 'No'} | ` +
+            `Design: ${data.supports_design ? 'Yes' : 'No'} | ` +
+            `Clone: ${data.supports_cloning ? 'Yes' : 'No'}`;
         updateTabAvailability(data);
+        await loadModels();
     } catch (e) {
         status.className = 'status error';
         status.textContent = 'Server not responding. Start with: make serve';
+    }
+}
+
+async function loadModels() {
+    try {
+        const res = await fetch('/models');
+        const data = await res.json();
+        availableModels = data.available;
+        const select = document.getElementById('model-select');
+        select.innerHTML = '';
+        data.available.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = m.name;
+            if (m.id === data.current) opt.selected = true;
+            select.appendChild(opt);
+        });
+        updateModelFeatures(data.current);
+    } catch (e) {
+        console.error('Failed to load models:', e);
+    }
+}
+
+function updateModelFeatures(modelId) {
+    const model = availableModels.find(m => m.id === modelId);
+    const features = document.getElementById('model-features');
+    if (model) {
+        const caps = [];
+        if (model.supports_custom_voice) caps.push('Simple');
+        if (model.supports_design) caps.push('Design');
+        if (model.supports_cloning) caps.push('Clone');
+        features.textContent = caps.length ? `(${caps.join(', ')})` : '';
+    }
+}
+
+function onModelSelect(modelId) {
+    if (modelId === serverInfo.model) return;
+    pendingModelId = modelId;
+    const model = availableModels.find(m => m.id === modelId);
+    document.getElementById('modal-message').innerHTML =
+        `Switch to <strong>${model?.name || modelId}</strong>?<br><br>` +
+        `This will reload the TTS model. Server unavailable for ~2 minutes.`;
+    document.getElementById('modal-overlay').classList.add('active');
+}
+
+function cancelSwitch() {
+    document.getElementById('modal-overlay').classList.remove('active');
+    // Reset select to current model
+    document.getElementById('model-select').value = serverInfo.model;
+    pendingModelId = null;
+}
+
+async function confirmSwitch() {
+    document.getElementById('modal-overlay').classList.remove('active');
+    document.getElementById('loading-overlay').classList.add('active');
+
+    try {
+        const res = await fetch('/model/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model_id: pendingModelId })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Switch failed');
+        }
+
+        const data = await res.json();
+        // Update serverInfo with new capabilities
+        serverInfo.model = data.model;
+        serverInfo.supports_cloning = data.supports_cloning;
+        serverInfo.supports_design = data.supports_design;
+        serverInfo.supports_custom_voice = data.supports_custom_voice;
+
+        // Update UI
+        await checkStatus();
+
+    } catch (e) {
+        alert('Failed to switch model: ' + e.message);
+        document.getElementById('model-select').value = serverInfo.model;
+    } finally {
+        document.getElementById('loading-overlay').classList.remove('active');
+        pendingModelId = null;
     }
 }
 

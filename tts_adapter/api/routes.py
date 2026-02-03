@@ -9,7 +9,15 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from ..config import get_settings
-from ..contract import HealthResponse, TTSBatchRequest, TTSRequest
+from ..contract import (
+    HealthResponse,
+    ModelInfo,
+    ModelsResponse,
+    SwitchModelRequest,
+    SwitchModelResponse,
+    TTSBatchRequest,
+    TTSRequest,
+)
 from ..engine import TTSEngine
 from ..engines import create_engine
 from ..web import router as web_router
@@ -58,6 +66,99 @@ def health() -> HealthResponse:
         supports_design=engine.supports_design,
         supports_custom_voice=engine.supports_custom_voice,
     )
+
+
+# Available Qwen3-TTS models
+AVAILABLE_MODELS = [
+    ModelInfo(
+        id="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        name="CustomVoice 1.7B",
+        variant="CustomVoice",
+        supports_custom_voice=True,
+        supports_cloning=False,
+        supports_design=False,
+    ),
+    ModelInfo(
+        id="Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        name="VoiceDesign 1.7B",
+        variant="VoiceDesign",
+        supports_custom_voice=False,
+        supports_cloning=False,
+        supports_design=True,
+    ),
+    ModelInfo(
+        id="Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+        name="Base 1.7B (Clone)",
+        variant="Base",
+        supports_custom_voice=False,
+        supports_cloning=True,
+        supports_design=False,
+    ),
+    ModelInfo(
+        id="Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+        name="Base 0.6B (Clone, Low VRAM)",
+        variant="Base",
+        supports_custom_voice=False,
+        supports_cloning=True,
+        supports_design=False,
+    ),
+]
+
+
+@app.get("/models", response_model=ModelsResponse)
+def list_models() -> ModelsResponse:
+    """List available models and current model."""
+    engine = get_engine()
+    return ModelsResponse(
+        current=engine.model_id,
+        available=AVAILABLE_MODELS,
+    )
+
+
+@app.post("/model/switch", response_model=SwitchModelResponse)
+def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
+    """Switch to a different model.
+
+    Warning: This unloads the current model and loads the new one.
+    Takes ~2 minutes and server is unavailable during reload.
+    """
+    # Validate model ID
+    valid_ids = {m.id for m in AVAILABLE_MODELS}
+    if req.model_id not in valid_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid model ID. Available: {', '.join(valid_ids)}",
+        )
+
+    engine = get_engine()
+
+    # Check if already loaded
+    if engine.model_id == req.model_id:
+        return SwitchModelResponse(
+            success=True,
+            model=engine.model_id,
+            message="Model already loaded",
+            supports_cloning=engine.supports_cloning,
+            supports_design=engine.supports_design,
+            supports_custom_voice=engine.supports_custom_voice,
+        )
+
+    # Reload with new model
+    try:
+        engine.reload(req.model_id)
+        return SwitchModelResponse(
+            success=True,
+            model=engine.model_id,
+            message=f"Switched to {req.model_id}",
+            supports_cloning=engine.supports_cloning,
+            supports_design=engine.supports_design,
+            supports_custom_voice=engine.supports_custom_voice,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to switch model: {e}",
+        )
 
 
 @app.post("/tts")

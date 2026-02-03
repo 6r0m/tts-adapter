@@ -45,3 +45,38 @@ class HealthResponse(BaseModel):
     supports_cloning: bool = Field(default=False, description="Whether voice cloning is supported")
     supports_design: bool = Field(default=False, description="Whether voice design is supported")
     supports_custom_voice: bool = Field(default=False, description="Whether preset speakers are supported")
+
+
+class ModelInfo(BaseModel):
+    """Information about an available model."""
+
+    id: str = Field(..., description="Model identifier")
+    name: str = Field(..., description="Human-readable model name")
+    variant: str = Field(..., description="Model variant: Base, CustomVoice, or VoiceDesign")
+    supports_cloning: bool = Field(default=False)
+    supports_design: bool = Field(default=False)
+    supports_custom_voice: bool = Field(default=False)
+
+
+class ModelsResponse(BaseModel):
+    """Response listing available models."""
+
+    current: str = Field(..., description="Currently loaded model ID")
+    available: list[ModelInfo] = Field(..., description="List of available models")
+
+
+class SwitchModelRequest(BaseModel):
+    """Request to switch to a different model."""
+
+    model_id: str = Field(..., description="Model ID to switch to")
+
+
+class SwitchModelResponse(BaseModel):
+    """Response after model switch."""
+
+    success: bool
+    model: str = Field(..., description="New model ID")
+    message: str = Field(..., description="Status message")
+    supports_cloning: bool = Field(default=False)
+    supports_design: bool = Field(default=False)
+    supports_custom_voice: bool = Field(default=False)
