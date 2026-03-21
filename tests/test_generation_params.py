@@ -136,8 +136,8 @@ class TestGenerationSettingsContract:
             files={"reference_audio": ("ref.wav", wav_data, "audio/wav")},
             timeout=120.0,
         )
-        # May fail due to short/silent audio but should not be 422
-        assert response.status_code != 422
+        # 200 = success, 400 = bad audio (too short/silent). Never 422 (validation) or 500 (crash).
+        assert response.status_code in {200, 400}, f"Unexpected status: {response.status_code}"
 
 
 class TestGenerationSettingsUnit:

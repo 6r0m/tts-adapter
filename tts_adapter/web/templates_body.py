@@ -6,7 +6,7 @@ def _advanced_settings(prefix: str) -> str:
     return f"""
             <details class="advanced-settings">
                 <summary>Advanced Settings
-                    <button type="button" class="param-help" onclick="openAdvancedHelp()" title="Parameter guide" aria-label="Parameter guide">?</button>
+                    <button type="button" class="param-help" onclick="event.preventDefault(); event.stopPropagation(); openAdvancedHelp()" title="Parameter guide" aria-label="Parameter guide">?</button>
                 </summary>
                 <div class="advanced-grid">
                     <div>

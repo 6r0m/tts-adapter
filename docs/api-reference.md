@@ -77,6 +77,19 @@ Generate WAV audio from text.
 | language | string | "Auto" | Language code or "Auto" |
 | speaker | string | "default" | Speaker/voice name |
 | instruct | string | "" | Style instruction |
+| generation | object | {} | Optional generation parameters (see below) |
+
+**Generation parameters** (all optional, `null` = library default):
+
+| Field | Type | Default | Range | Description |
+|-------|------|---------|-------|-------------|
+| temperature | float | 0.9 | 0.01-2.0 | Sampling randomness |
+| top_k | int | 50 | 1-200 | Top-k sampling |
+| top_p | float | 1.0 | 0.1-1.0 | Nucleus sampling |
+| repetition_penalty | float | 1.05 | 1.0-2.0 | Repetition penalty |
+| max_new_tokens | int | 2048 | 256-4096 | Max codec tokens |
+
+See [Generation Parameters](engines/qwen3/params.md) for tuning tips.
 
 **Response:** `audio/wav` binary
 
@@ -84,7 +97,7 @@ Generate WAV audio from text.
 ```bash
 curl -X POST http://localhost:9880/tts \
   -H 'content-type: application/json' \
-  -d '{"text":"Привет мир","language":"Russian"}' \
+  -d '{"text":"Привет мир","language":"Russian","generation":{"temperature":0.7}}' \
   --output out.wav
 ```
 
@@ -136,8 +149,13 @@ Generate speech with a custom voice created from text description.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | text | string | required | Text to synthesize |
-| instruct | string | required | Voice description (see [Voice Design Guide](engines/qwen3.md#voice-design)) |
+| instruct | string | required | Voice description (see [Voice Design Guide](engines/qwen3/README.md#voice-design)) |
 | language | string | "Auto" | Language code |
+| temperature | float | null | Sampling temperature (0.01-2.0) |
+| top_k | int | null | Top-k sampling (1-200) |
+| top_p | float | null | Nucleus sampling (0.1-1.0) |
+| repetition_penalty | float | null | Repetition penalty (1.0-2.0) |
+| max_new_tokens | int | null | Max codec tokens (256-4096) |
 
 **Response:** `audio/wav` binary
 
@@ -147,6 +165,7 @@ curl -X POST http://localhost:9880/tts/design \
   -F 'text=Привет мир' \
   -F 'language=Russian' \
   -F 'instruct=Adult female voice, contralto range, warm and confident' \
+  -F 'temperature=0.7' \
   --output designed.wav
 ```
 
@@ -164,6 +183,11 @@ Clone a voice from reference audio sample.
 | reference_audio | file | required | WAV file (3-10 seconds) |
 | reference_text | string | "" | Transcript of reference audio (improves quality) |
 | language | string | "Auto" | Language code |
+| temperature | float | null | Sampling temperature (0.01-2.0) |
+| top_k | int | null | Top-k sampling (1-200) |
+| top_p | float | null | Nucleus sampling (0.1-1.0) |
+| repetition_penalty | float | null | Repetition penalty (1.0-2.0) |
+| max_new_tokens | int | null | Max codec tokens (256-4096) |
 
 **Response:** `audio/wav` binary
 
@@ -174,6 +198,7 @@ curl -X POST http://localhost:9880/tts/clone \
   -F 'language=Russian' \
   -F 'reference_audio=@voice_sample.wav' \
   -F 'reference_text=Hello world' \
+  -F 'temperature=0.7' \
   --output cloned.wav
 ```
 
@@ -192,4 +217,5 @@ Standard HTTP error codes with JSON body:
 | Code | Description |
 |------|-------------|
 | 400 | Invalid request or unsupported feature |
+| 422 | Validation error (missing/invalid fields or out-of-range generation params) |
 | 500 | Internal server error |

@@ -407,13 +407,21 @@ async function generateClone() {
 }
 
 function getAdvancedSettings(prefix) {
-    return {
-        temperature: parseFloat(document.getElementById(prefix + '-temperature').value),
-        top_k: parseInt(document.getElementById(prefix + '-top_k').value),
-        top_p: parseFloat(document.getElementById(prefix + '-top_p').value),
-        repetition_penalty: parseFloat(document.getElementById(prefix + '-repetition_penalty').value),
-        max_new_tokens: parseInt(document.getElementById(prefix + '-max_new_tokens').value),
+    const fields = {
+        temperature: 'float',
+        top_k: 'int',
+        top_p: 'float',
+        repetition_penalty: 'float',
+        max_new_tokens: 'int',
     };
+    const out = {};
+    for (const [key, type] of Object.entries(fields)) {
+        const val = document.getElementById(prefix + '-' + key).value;
+        if (val === '') continue;
+        const num = type === 'int' ? parseInt(val, 10) : parseFloat(val);
+        if (Number.isFinite(num)) out[key] = num;
+    }
+    return out;
 }
 
 function openAdvancedHelp() {

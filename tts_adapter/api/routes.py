@@ -252,11 +252,11 @@ async def tts_clone(
     language: str = Form(default="Auto", description="Language code"),
     reference_text: str = Form(default="", description="Transcript of reference audio (improves quality)"),
     reference_audio: UploadFile = File(..., description="Reference audio WAV (3-10 sec)"),
-    temperature: float | None = Form(default=None),
-    top_k: int | None = Form(default=None),
-    top_p: float | None = Form(default=None),
-    repetition_penalty: float | None = Form(default=None),
-    max_new_tokens: int | None = Form(default=None),
+    temperature: float | None = Form(default=None, ge=0.01, le=2.0),
+    top_k: int | None = Form(default=None, ge=1, le=200),
+    top_p: float | None = Form(default=None, ge=0.1, le=1.0),
+    repetition_penalty: float | None = Form(default=None, ge=1.0, le=2.0),
+    max_new_tokens: int | None = Form(default=None, ge=256, le=4096),
 ) -> Response:
     """Generate speech by cloning voice from reference audio.
 
@@ -288,11 +288,11 @@ def tts_design(
     text: str = Form(..., description="Text to synthesize"),
     instruct: str = Form(..., description="Natural language description of the voice"),
     language: str = Form(default="Auto", description="Language code"),
-    temperature: float | None = Form(default=None),
-    top_k: int | None = Form(default=None),
-    top_p: float | None = Form(default=None),
-    repetition_penalty: float | None = Form(default=None),
-    max_new_tokens: int | None = Form(default=None),
+    temperature: float | None = Form(default=None, ge=0.01, le=2.0),
+    top_k: int | None = Form(default=None, ge=1, le=200),
+    top_p: float | None = Form(default=None, ge=0.1, le=1.0),
+    repetition_penalty: float | None = Form(default=None, ge=1.0, le=2.0),
+    max_new_tokens: int | None = Form(default=None, ge=256, le=4096),
 ) -> Response:
     """Generate speech with a designed voice from natural language description.
 
