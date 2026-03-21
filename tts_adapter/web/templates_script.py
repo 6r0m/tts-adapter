@@ -266,16 +266,24 @@ function switchTab(tab) {
 
 function showResult(blob) {
     const url = URL.createObjectURL(blob);
+    const result = document.getElementById('result');
+    // Restore audio/download elements if they were replaced by showError
+    if (!document.getElementById('audio')) {
+        result.innerHTML = '<strong>Result:</strong>' +
+            '<audio id="audio" controls></audio><br>' +
+            '<a id="download" class="download-btn" download="tts_output.wav" title="Download generated WAV">Download WAV</a>';
+    }
     document.getElementById('audio').src = url;
     document.getElementById('download').href = url;
-    document.getElementById('result').className = 'result';
-    document.getElementById('result').style.display = 'block';
+    result.className = 'result';
+    result.style.display = 'block';
 }
 
 function showError(msg) {
-    document.getElementById('result').className = 'result error';
-    document.getElementById('result').innerHTML = '<strong>Error:</strong> ' + msg;
-    document.getElementById('result').style.display = 'block';
+    const result = document.getElementById('result');
+    result.className = 'result error';
+    result.innerHTML = '<strong>Error:</strong> ' + msg;
+    result.style.display = 'block';
 }
 
 function setProgressVisible(visible, labelText, hintText) {
