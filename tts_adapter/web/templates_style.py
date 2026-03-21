@@ -248,9 +248,28 @@ audio { width: 100%; margin: 10px 0; }
     align-items: center;
     gap: 8px;
     user-select: none;
+    list-style: none;
+    background: #fafafa;
+    border-radius: 4px;
 }
-.advanced-settings summary:hover { color: #333; }
-.advanced-settings[open] summary { border-bottom: 1px solid #e0e0e0; }
+.advanced-settings summary::-webkit-details-marker { display: none; }
+.advanced-settings summary:hover { color: #333; background: #f0f0f0; }
+.advanced-settings[open] summary {
+    border-bottom: 1px solid #e0e0e0;
+    border-radius: 4px 4px 0 0;
+}
+.advanced-arrow {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-left: 5px solid #999;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transition: transform 0.2s;
+}
+.advanced-settings[open] .advanced-arrow {
+    transform: rotate(90deg);
+}
 .advanced-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

@@ -5,29 +5,29 @@ def _advanced_settings(prefix: str) -> str:
     """Generate collapsible advanced settings section for a tab."""
     return f"""
             <details class="advanced-settings">
-                <summary>Advanced Settings
+                <summary><span class="advanced-arrow"></span> Advanced Settings
                     <button type="button" class="param-help" onclick="event.preventDefault(); event.stopPropagation(); openAdvancedHelp()" title="Parameter guide" aria-label="Parameter guide">?</button>
                 </summary>
                 <div class="advanced-grid">
                     <div>
                         <label for="{prefix}-temperature">Temperature</label>
-                        <input type="number" id="{prefix}-temperature" value="0.9" min="0.01" max="2.0" step="0.05" title="Sampling temperature (default: 0.9)">
+                        <input type="number" id="{prefix}-temperature" value="0.9" min="0.01" max="2.0" step="0.05" title="Controls randomness. Lower (0.3-0.7) = more consistent output. Higher (1.0+) = more varied but may reduce quality. Default: 0.9">
                     </div>
                     <div>
                         <label for="{prefix}-top_k">Top-K</label>
-                        <input type="number" id="{prefix}-top_k" value="50" min="1" max="200" step="1" title="Top-k sampling (default: 50)">
+                        <input type="number" id="{prefix}-top_k" value="50" min="1" max="200" step="1" title="Limits sampling to top K most likely tokens. Lower (10-30) = more focused, predictable. Higher = more diverse. Default: 50">
                     </div>
                     <div>
                         <label for="{prefix}-top_p">Top-P</label>
-                        <input type="number" id="{prefix}-top_p" value="1.0" min="0.1" max="1.0" step="0.05" title="Nucleus sampling (default: 1.0)">
+                        <input type="number" id="{prefix}-top_p" value="1.0" min="0.1" max="1.0" step="0.05" title="Nucleus sampling: only tokens whose cumulative probability reaches P are considered. Lower (0.7-0.9) cuts unlikely tokens. Default: 1.0">
                     </div>
                     <div>
                         <label for="{prefix}-repetition_penalty">Repetition Penalty</label>
-                        <input type="number" id="{prefix}-repetition_penalty" value="1.05" min="1.0" max="2.0" step="0.05" title="Repetition penalty (default: 1.05)">
+                        <input type="number" id="{prefix}-repetition_penalty" value="1.05" min="1.0" max="2.0" step="0.05" title="Penalizes repeated tokens. Increase (1.1-1.3) if you hear repeated sounds or artifacts. Too high may distort speech. Default: 1.05">
                     </div>
                     <div>
                         <label for="{prefix}-max_new_tokens">Max Tokens</label>
-                        <input type="number" id="{prefix}-max_new_tokens" value="2048" min="256" max="4096" step="256" title="Max codec tokens (default: 2048)">
+                        <input type="number" id="{prefix}-max_new_tokens" value="2048" min="256" max="4096" step="256" title="Maximum audio codec tokens to generate. Increase for very long texts. ~256 tokens = ~5-10 seconds of audio. Default: 2048">
                     </div>
                 </div>
             </details>"""
