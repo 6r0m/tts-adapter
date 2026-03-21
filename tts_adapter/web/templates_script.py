@@ -24,11 +24,16 @@ function updateStatusText() {
     const status = document.getElementById('status');
     const modelName = getModelName(serverInfo.model);
     const caps = getCapabilitiesList(serverInfo);
-    const capText = caps.length ? caps.join(', ') : 'None';
-    status.innerHTML = `<strong>${t('status.ok')}</strong> | ${t('status.engine')}: ${serverInfo.engine} | ` +
-        `${t('status.model')}: ${modelName} | ${t('status.caps')}: ${capText}`;
-    status.title = `Model ID: ${serverInfo.model || 'Unknown'} | Device: ${serverInfo.device || 'Unknown'}`;
-    document.title = `TTS Adapter - ${modelName} (${capText})`;
+    const capText = caps.length ? caps.join(', ') : '—';
+    status.replaceChildren();
+    const strong = document.createElement('strong');
+    strong.textContent = t('status.ok');
+    status.appendChild(strong);
+    status.appendChild(document.createTextNode(
+        ` | ${t('status.engine')}: ${serverInfo.engine} | ${t('status.model')}: ${modelName} | ${t('status.caps')}: ${capText}`
+    ));
+    status.title = `Model ID: ${serverInfo.model || '?'} | Device: ${serverInfo.device || '?'}`;
+    document.title = `${t('app.title')} — ${modelName} (${capText})`;
 }
 
 async function checkStatus() {
@@ -235,11 +240,11 @@ function updateTabAvailability(data) {
 
 function setTabState(tab, supported, disabledTitle) {
     if (!tab) return;
-    const defaultTitleKey = tab.dataset.defaultTitle || '';
+    const titleKey = tab.dataset.defaultTitleKey || '';
     tab.classList.toggle('tab-disabled', !supported);
     tab.setAttribute('aria-disabled', supported ? 'false' : 'true');
     tab.dataset.supported = supported ? 'true' : 'false';
-    tab.title = supported ? t(defaultTitleKey) : disabledTitle;
+    tab.title = supported ? t(titleKey) : disabledTitle;
 }
 
 function setTabVisibility(tab, supported) {
@@ -276,8 +281,12 @@ function showResult(blob) {
 function showError(msg) {
     const result = document.getElementById('result');
     result.className = 'result error';
-    result.innerHTML = `<strong>${t('error.prefix')}:</strong> ` + msg;
     result.style.display = 'block';
+    result.replaceChildren();
+    const strong = document.createElement('strong');
+    strong.textContent = `${t('error.prefix')}:`;
+    result.appendChild(strong);
+    result.appendChild(document.createTextNode(` ${msg}`));
 }
 
 function setProgressVisible(visible, labelText, hintText) {
@@ -454,6 +463,17 @@ function openAdvancedHelp() {
 
 function closeAdvancedHelp() {
     document.getElementById('advanced-help-overlay').classList.remove('active');
+}
+
+function rerenderDynamicTexts() {
+    if (serverInfo?.model) {
+        updateStatusText();
+        updateModelFeatures(document.getElementById('model-select')?.value || serverInfo.model);
+        updateTabAvailability(serverInfo);
+    }
+    if (document.getElementById('model-help-overlay')?.classList.contains('active')) {
+        updateModelHelp();
+    }
 }
 
 // Boot: apply translations first, then load status

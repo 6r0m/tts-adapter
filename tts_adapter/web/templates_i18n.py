@@ -44,11 +44,11 @@ TRANSLATIONS = {
         "help.params_title": "Параметры генерации",
         "help.params_intro": "Эти параметры управляют генерацией аудио-токенов. Значения по умолчанию подходят для большинства случаев.",
         "help.close_params": "Закрыть справку по параметрам",
-        "help.temp_desc": "Управляет случайностью. Низкие значения (0.3-0.7) дают более стабильный результат. Высокие (1.0-1.5) добавляют разнообразие, но могут снизить качество.",
-        "help.topk_desc": "Ограничивает выборку K наиболее вероятными токенами. Меньше (10-30) — более сфокусированно. Больше — разнообразнее.",
-        "help.topp_desc": "Nucleus sampling: учитываются только токены, чья совокупная вероятность достигает P. Меньше (0.7-0.9) отсекает маловероятные. При 1.0 учитываются все.",
-        "help.rep_desc": "Штрафует уже появившиеся токены. Увеличьте (1.1-1.3) при повторах или артефактах. Слишком высокое значение исказит речь.",
-        "help.tokens_desc": "Максимум аудио-кодек токенов. Увеличьте для длинных текстов. ~256 токенов ≈ 5-10 секунд аудио.",
+        "help.temp_desc": "Разнообразие голоса (0.01–2.0). Ниже (0.3–0.7) — стабильный ровный голос для озвучки и новостей. Выше (1.0–1.5) — живой выразительный для персонажей и рекламы. Выше 1.5 может звучать странно.",
+        "help.topk_desc": "Варианты произношения (1–200). Ниже (10–30) — чёткий предсказуемый голос для объявлений. Выше (80–150) — богаче интонации для подкастов и художественного чтения.",
+        "help.topp_desc": "Порог отбора (0.1–1.0). Ниже (0.7–0.9) — только лучшие варианты, чище звук для продакшна. При 1.0 — все варианты, максимум естественности для разговорного стиля.",
+        "help.rep_desc": "Защита от повторов (1.0–2.0). При 1.0 — без защиты. 1.1–1.3 — убирает заикания, если слышите артефакты. Выше 1.5 может исказить речь.",
+        "help.tokens_desc": "Макс. длина аудио (256–4096). 256 ≈ 5–10 сек, 2048 ≈ 1–2 мин. Увеличьте для длинных текстов, уменьшите для коротких фраз.",
         # Tabs
         "tab.simple": "Простой",
         "tab.design": "Дизайн голоса",
@@ -110,11 +110,11 @@ TRANSLATIONS = {
         "param.top_p": "Top-P",
         "param.rep_penalty": "Штраф повтора",
         "param.max_tokens": "Макс. токенов",
-        "param.temp_tip": "Случайность. Ниже (0.3-0.7) = стабильнее. Выше (1.0+) = разнообразнее. По умолч.: 0.9",
-        "param.topk_tip": "Ограничение выборки K токенами. Ниже (10-30) = сфокусированнее. По умолч.: 50",
-        "param.topp_tip": "Nucleus sampling: учитываются токены до порога P. Ниже (0.7-0.9) отсекает маловероятные. По умолч.: 1.0",
-        "param.rep_tip": "Штраф за повторы. Увеличьте (1.1-1.3) при артефактах. По умолч.: 1.05",
-        "param.tokens_tip": "Максимум аудио-токенов. Для длинных текстов увеличьте. ~256 ≈ 5-10 сек. По умолч.: 2048",
+        "param.temp_tip": "Разнообразие голоса (0.01–2.0, обычно 0.9). Ниже (0.3–0.7): стабильный, ровный голос — для озвучки книг, новостей, инструкций. Выше (1.0–1.5): живой, выразительный — для персонажей, рекламы. Выше 1.5 может звучать странно.",
+        "param.topk_tip": "Сколько вариантов произношения рассматривать (1–200, обычно 50). Ниже (10–30): чёткий, предсказуемый голос — для официальных объявлений, навигации. Выше (80–150): разнообразнее интонации — для художественного чтения, подкастов.",
+        "param.topp_tip": "Порог отбора вариантов (0.1–1.0, обычно 1.0). Ниже (0.7–0.9): только лучшие варианты, чище звук — для продакшн-озвучки. При 1.0: все варианты, максимум естественности — для разговорного стиля.",
+        "param.rep_tip": "Защита от повторов (1.0–2.0, обычно 1.05). При 1.0: без защиты. 1.1–1.3: убирает заикания и повторяющиеся звуки — если слышите артефакты. Выше 1.5: может исказить речь, используйте осторожно.",
+        "param.tokens_tip": "Макс. длина аудио (256–4096, обычно 2048). 256 ≈ 5–10 сек, 2048 ≈ 1–2 мин. Увеличьте (3072–4096) для длинных абзацев. Уменьшите для коротких фраз — быстрее генерация.",
         # Progress
         "progress.generating": "Генерация аудио...",
         "progress.designing": "Создание голоса...",
@@ -188,11 +188,11 @@ TRANSLATIONS = {
         "help.params_title": "Generation Parameters",
         "help.params_intro": "These parameters control how the model generates audio tokens. Defaults work well for most cases.",
         "help.close_params": "Close parameter guide",
-        "help.temp_desc": "Controls randomness. Lower values (0.3-0.7) produce more consistent, deterministic output. Higher values (1.0-1.5) add variety but may reduce quality.",
-        "help.topk_desc": "Limits sampling to the K most likely tokens at each step. Lower values (10-30) make output more focused. Higher values allow more diversity.",
-        "help.topp_desc": "Nucleus sampling: only considers tokens whose cumulative probability reaches P. Lower values (0.7-0.9) cut unlikely tokens. At 1.0 all tokens are considered.",
-        "help.rep_desc": "Penalizes tokens that already appeared. Increase (1.1-1.3) if you hear repeated sounds or artifacts. Too high may distort speech.",
-        "help.tokens_desc": "Maximum number of audio codec tokens to generate. Increase for very long texts. Each ~256 tokens is roughly 5-10 seconds of audio.",
+        "help.temp_desc": "Voice variety (0.01–2.0). Lower (0.3–0.7) — stable even voice for narration and news. Higher (1.0–1.5) — lively expressive for characters and ads. Above 1.5 may sound unnatural.",
+        "help.topk_desc": "Pronunciation options (1–200). Lower (10–30) — clear predictable voice for announcements. Higher (80–150) — richer intonation for podcasts and storytelling.",
+        "help.topp_desc": "Selection threshold (0.1–1.0). Lower (0.7–0.9) — only best options, cleaner sound for production. At 1.0 — all options, maximum naturalness for conversational style.",
+        "help.rep_desc": "Repeat protection (1.0–2.0). At 1.0 — no protection. 1.1–1.3 — removes stuttering, use if you hear artifacts. Above 1.5 may distort speech.",
+        "help.tokens_desc": "Max audio length (256–4096). 256 ≈ 5–10 sec, 2048 ≈ 1–2 min. Increase for long texts, decrease for short phrases.",
         # Tabs
         "tab.simple": "Simple",
         "tab.design": "Voice Design",
@@ -254,11 +254,11 @@ TRANSLATIONS = {
         "param.top_p": "Top-P",
         "param.rep_penalty": "Repetition Penalty",
         "param.max_tokens": "Max Tokens",
-        "param.temp_tip": "Controls randomness. Lower (0.3-0.7) = more consistent output. Higher (1.0+) = more varied but may reduce quality. Default: 0.9",
-        "param.topk_tip": "Limits sampling to top K most likely tokens. Lower (10-30) = more focused, predictable. Higher = more diverse. Default: 50",
-        "param.topp_tip": "Nucleus sampling: only tokens whose cumulative probability reaches P are considered. Lower (0.7-0.9) cuts unlikely tokens. Default: 1.0",
-        "param.rep_tip": "Penalizes repeated tokens. Increase (1.1-1.3) if you hear repeated sounds or artifacts. Too high may distort speech. Default: 1.05",
-        "param.tokens_tip": "Maximum audio codec tokens to generate. Increase for very long texts. ~256 tokens = ~5-10 seconds of audio. Default: 2048",
+        "param.temp_tip": "Voice variety (0.01–2.0, default 0.9). Lower (0.3–0.7): stable, even voice — for audiobooks, news, instructions. Higher (1.0–1.5): lively, expressive — for characters, ads. Above 1.5 may sound unnatural.",
+        "param.topk_tip": "How many pronunciation options to consider (1–200, default 50). Lower (10–30): clear, predictable voice — for announcements, navigation. Higher (80–150): richer intonation — for storytelling, podcasts.",
+        "param.topp_tip": "Selection threshold for options (0.1–1.0, default 1.0). Lower (0.7–0.9): only best options, cleaner sound — for production voiceover. At 1.0: all options, maximum naturalness — for conversational style.",
+        "param.rep_tip": "Repeat protection (1.0–2.0, default 1.05). At 1.0: no protection. 1.1–1.3: removes stuttering and repeated sounds — use if you hear artifacts. Above 1.5: may distort speech, use carefully.",
+        "param.tokens_tip": "Max audio length (256–4096, default 2048). 256 ≈ 5–10 sec, 2048 ≈ 1–2 min. Increase (3072–4096) for long paragraphs. Decrease for short phrases — faster generation.",
         # Progress
         "progress.generating": "Generating audio...",
         "progress.designing": "Designing voice...",
@@ -312,7 +312,9 @@ function applyTranslations(root) {{
     el.placeholder = t(el.dataset.i18nPlaceholder);
   }});
   (root || document).querySelectorAll('[data-i18n-title]').forEach(el => {{
-    el.title = t(el.dataset.i18nTitle);
+    const val = t(el.dataset.i18nTitle);
+    el.title = val;
+    if (el.hasAttribute('aria-label')) el.setAttribute('aria-label', val);
   }});
   document.documentElement.lang = currentLang;
 }}
@@ -322,13 +324,14 @@ function switchUiLang(lang) {{
   localStorage.setItem('ui-lang', lang);
   applyTranslations();
   updateLangToggle();
+  if (typeof rerenderDynamicTexts === 'function') rerenderDynamicTexts();
 }}
 
 function updateLangToggle() {{
-  const btn = document.getElementById('lang-toggle');
-  if (!btn) return;
-  btn.textContent = currentLang === 'ru' ? 'EN' : 'РУ';
-  btn.setAttribute('aria-label',
-    currentLang === 'ru' ? 'Switch to English' : 'Переключить на русский');
+  const ru = document.getElementById('lang-btn-ru');
+  const en = document.getElementById('lang-btn-en');
+  if (!ru || !en) return;
+  ru.classList.toggle('lang-active', currentLang === 'ru');
+  en.classList.toggle('lang-active', currentLang === 'en');
 }}
 """

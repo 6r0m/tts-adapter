@@ -16,19 +16,32 @@ h1 { color: #333; margin-bottom: 5px; }
     align-items: flex-start;
     justify-content: space-between;
 }
-.lang-toggle {
-    background: none;
+.lang-switch {
+    display: flex;
     border: 1px solid #ccc;
-    border-radius: 4px;
-    padding: 4px 10px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    color: #666;
-    width: auto;
-    margin-top: 5px;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 8px;
 }
-.lang-toggle:hover { background: #f0f0f0; border-color: #999; color: #333; }
+.lang-btn {
+    background: #f5f5f5;
+    border: none;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 700;
+    color: #999;
+    width: auto;
+    border-radius: 0;
+    letter-spacing: 0.5px;
+}
+.lang-btn:hover { background: #e8e8e8; color: #666; }
+.lang-btn.lang-active {
+    background: #333;
+    color: #fff;
+    cursor: default;
+}
+.lang-btn.lang-active:hover { background: #333; color: #fff; }
 .card {
     background: white;
     border-radius: 8px;

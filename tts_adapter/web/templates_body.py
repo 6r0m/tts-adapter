@@ -39,9 +39,12 @@ INDEX_BODY = """
             <h1 data-i18n="app.title">TTS Adapter</h1>
             <p class="subtitle" data-i18n="app.subtitle">Text-to-Speech Generation</p>
         </div>
-        <button id="lang-toggle" type="button" class="lang-toggle"
-            aria-label="Switch UI language"
-            onclick="switchUiLang(currentLang === 'ru' ? 'en' : 'ru')">EN</button>
+        <div id="lang-switch" class="lang-switch" role="radiogroup" aria-label="Interface language">
+            <button type="button" class="lang-btn lang-active" id="lang-btn-ru"
+                onclick="switchUiLang('ru')">РУ</button>
+            <button type="button" class="lang-btn" id="lang-btn-en"
+                onclick="switchUiLang('en')">EN</button>
+        </div>
     </div>
 
     <div id="status" class="status" data-i18n="status.checking">Checking server status...</div>
@@ -52,7 +55,7 @@ INDEX_BODY = """
             <option value="" data-i18n="model.loading">Loading...</option>
         </select>
         <button type="button" class="model-help" onclick="openModelHelp()" data-i18n-title="model.guide" title="Model guide" aria-label="Model guide">?</button>
-        <span id="model-features" data-i18n-title="model.features_title" title="Capabilities for selected model"></span>
+        <span id="model-features" title="Capabilities for selected model"></span>
     </div>
 
     <!-- Loading overlay -->
@@ -98,9 +101,9 @@ INDEX_BODY = """
 
     <div class="card">
         <div class="tabs">
-            <button class="tab active" data-tab="simple" onclick="switchTab('simple')" data-i18n-title="tab.simple_title" title="Simple TTS (CustomVoice model)" data-default-title="tab.simple_title" type="button" data-i18n="tab.simple">Simple</button>
-            <button class="tab" data-tab="design" onclick="switchTab('design')" data-i18n-title="tab.design_title" title="Voice Design (VoiceDesign model)" data-default-title="tab.design_title" type="button" data-i18n="tab.design">Voice Design</button>
-            <button class="tab" data-tab="clone" onclick="switchTab('clone')" data-i18n-title="tab.clone_title" title="Voice Clone (Base model)" data-default-title="tab.clone_title" type="button" data-i18n="tab.clone">Voice Clone</button>
+            <button class="tab active" data-tab="simple" onclick="switchTab('simple')" title="Simple TTS (CustomVoice model)" data-default-title-key="tab.simple_title" type="button" data-i18n="tab.simple">Simple</button>
+            <button class="tab" data-tab="design" onclick="switchTab('design')" title="Voice Design (VoiceDesign model)" data-default-title-key="tab.design_title" type="button" data-i18n="tab.design">Voice Design</button>
+            <button class="tab" data-tab="clone" onclick="switchTab('clone')" title="Voice Clone (Base model)" data-default-title-key="tab.clone_title" type="button" data-i18n="tab.clone">Voice Clone</button>
         </div>
 
         <!-- Simple TTS Tab -->
