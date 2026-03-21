@@ -4,29 +4,7 @@ Base URL: `http://localhost:9880`
 
 ## Web UI
 
-Access the web interface at **http://localhost:9880/** for easy TTS generation without coding.
-
-### Features
-
-- **Simple TTS** - Select speaker, language, enter text, generate speech
-- **Voice Design** - Create custom voices from text descriptions
-- **Voice Clone** - Clone voice from audio sample (requires Base model)
-- **Audio Player** - Listen to results directly in browser
-- **Download** - Save generated WAV files
-
-### Screenshots
-
-The UI has three tabs:
-
-| Tab | Description | Model Required |
-|-----|-------------|----------------|
-| Simple | Preset speakers + style instructions | CustomVoice |
-| Voice Design | Create voice from description | VoiceDesign |
-| Voice Clone | Clone from audio sample | Base |
-
-### Status Bar
-
-Shows server info: engine, model, and supported features (cloning/design).
+Browser interface at **http://localhost:9880/**. See [Web UI docs](web-ui.md) for features, i18n, advanced settings, LAN setup.
 
 ---
 

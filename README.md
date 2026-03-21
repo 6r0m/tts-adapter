@@ -54,17 +54,7 @@ See [Qwen3 Engine docs](docs/engines/qwen3/README.md#offline-mode) for details.
 
 ## Web UI
 
-Open **http://localhost:9880** in your browser for a simple web interface.
-
-### Features
-
-| Tab | Description | Model |
-|-----|-------------|-------|
-| **Simple** | Preset speakers + style instructions | CustomVoice |
-| **Voice Design** | Create voice from text description | VoiceDesign |
-| **Voice Clone** | Clone from audio sample | Base |
-
-The status bar shows current engine, model, and available features.
+Open **http://localhost:9880** — three modes (Simple, Voice Design, Voice Clone), RU/EN switch, advanced generation settings. See [Web UI docs](docs/web-ui.md).
 
 For API access, see [API Reference](docs/api-reference.md). Swagger docs available at `/docs`.
 
@@ -156,6 +146,7 @@ curl http://localhost:9880/health
 
 | Document | Description |
 |----------|-------------|
+| [Web UI](docs/web-ui.md) | Language switch, advanced settings, multi-client, LAN |
 | [Architecture](docs/architecture.md) | Design decisions, engine protocol |
 | [API Reference](docs/api-reference.md) | Endpoint specs, request/response formats |
 | [Qwen3 Engine](docs/engines/qwen3/README.md) | Model variants, speakers, setup |

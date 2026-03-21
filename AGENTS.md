@@ -15,6 +15,7 @@ Project-specific agent instructions for TTS Adapter codebase.
 **Architecture:**
 - Overview: [docs/architecture.md](docs/architecture.md)
 - API Reference: [docs/api-reference.md](docs/api-reference.md)
+- Web UI (i18n, settings, LAN): [docs/web-ui.md](docs/web-ui.md)
 - Qwen3 Engine: [docs/engines/qwen3/README.md](docs/engines/qwen3/README.md)
 
 **Check universal rules:** See `~/.claude/CLAUDE.md` for global standards
