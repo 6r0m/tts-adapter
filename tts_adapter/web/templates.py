@@ -1,12 +1,13 @@
 """HTML templates for web UI."""
 
 from .templates_body import INDEX_BODY
+from .templates_i18n import I18N_SCRIPT
 from .templates_script import INDEX_SCRIPT
 from .templates_style import INDEX_STYLE
 
 INDEX_HTML = f"""
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,6 +19,7 @@ INDEX_HTML = f"""
 <body>
 {INDEX_BODY}
 <script>
+{I18N_SCRIPT}
 {INDEX_SCRIPT}
 </script>
 </body>

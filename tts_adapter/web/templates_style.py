@@ -11,6 +11,24 @@ body {
 }
 h1 { color: #333; margin-bottom: 5px; }
 .subtitle { color: #666; margin-bottom: 20px; }
+.title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+}
+.lang-toggle {
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #666;
+    width: auto;
+    margin-top: 5px;
+}
+.lang-toggle:hover { background: #f0f0f0; border-color: #999; color: #333; }
 .card {
     background: white;
     border-radius: 8px;

@@ -14,9 +14,9 @@ function getModelName(modelId) {
 
 function getCapabilitiesList(data) {
     const caps = [];
-    if (data?.supports_custom_voice) caps.push('Simple');
-    if (data?.supports_design) caps.push('Design');
-    if (data?.supports_cloning) caps.push('Clone');
+    if (data?.supports_custom_voice) caps.push(t('cap.simple'));
+    if (data?.supports_design) caps.push(t('cap.design'));
+    if (data?.supports_cloning) caps.push(t('cap.clone'));
     return caps;
 }
 
@@ -25,8 +25,8 @@ function updateStatusText() {
     const modelName = getModelName(serverInfo.model);
     const caps = getCapabilitiesList(serverInfo);
     const capText = caps.length ? caps.join(', ') : 'None';
-    status.innerHTML = `<strong>Server OK</strong> | Engine: ${serverInfo.engine} | ` +
-        `Model: ${modelName} | Caps: ${capText}`;
+    status.innerHTML = `<strong>${t('status.ok')}</strong> | ${t('status.engine')}: ${serverInfo.engine} | ` +
+        `${t('status.model')}: ${modelName} | ${t('status.caps')}: ${capText}`;
     status.title = `Model ID: ${serverInfo.model || 'Unknown'} | Device: ${serverInfo.device || 'Unknown'}`;
     document.title = `TTS Adapter - ${modelName} (${capText})`;
 }
@@ -43,7 +43,7 @@ async function checkStatus() {
         await loadModels();
     } catch (e) {
         status.className = 'status error';
-        status.textContent = 'Server not responding. Start with: make serve';
+        status.textContent = t('status.error');
     }
 }
 
@@ -76,20 +76,20 @@ function updateModelFeatures(modelId) {
     const features = document.getElementById('model-features');
     if (model) {
         const caps = [];
-        if (model.supports_custom_voice) caps.push('Simple');
-        if (model.supports_design) caps.push('Design');
-        if (model.supports_cloning) caps.push('Clone');
+        if (model.supports_custom_voice) caps.push(t('cap.simple'));
+        if (model.supports_design) caps.push(t('cap.design'));
+        if (model.supports_cloning) caps.push(t('cap.clone'));
         if (caps.length === 1) {
-            features.textContent = `Mode: ${caps[0]}`;
+            features.textContent = `${t('cap.mode')}: ${caps[0]}`;
         } else if (caps.length > 1) {
-            features.textContent = `Modes: ${caps.join(', ')}`;
+            features.textContent = `${t('cap.modes')}: ${caps.join(', ')}`;
         } else {
             features.textContent = '';
         }
-        features.title = caps.length ? `Capabilities: ${caps.join(', ')}` : 'Capabilities unavailable';
+        features.title = caps.length ? `${t('cap.caps')}: ${caps.join(', ')}` : t('cap.unavailable');
     } else {
         features.textContent = '';
-        features.title = 'Capabilities unavailable';
+        features.title = t('cap.unavailable');
     }
 }
 
@@ -98,13 +98,12 @@ function updateModelHelp() {
     if (!container) return;
     container.innerHTML = '';
     if (!availableModels.length) {
-        container.textContent = 'Model info unavailable.';
+        container.textContent = t('error.model_info');
         return;
     }
 
     const intro = document.createElement('p');
-    intro.textContent = `Current model: ${getModelName(serverInfo.model)}. ` +
-        'Pick a model based on the feature you need:';
+    intro.textContent = `${t('help.current_model')}: ${getModelName(serverInfo.model)}. ${t('help.pick_model')}`;
     container.appendChild(intro);
 
     const list = document.createElement('ul');
@@ -117,12 +116,12 @@ function updateModelHelp() {
         li.appendChild(name);
 
         const caps = [];
-        if (model.supports_custom_voice) caps.push('Simple (style instruction)');
-        if (model.supports_design) caps.push('Voice Design');
-        if (model.supports_cloning) caps.push('Voice Clone');
+        if (model.supports_custom_voice) caps.push(t('cap.simple_full'));
+        if (model.supports_design) caps.push(t('cap.design_full'));
+        if (model.supports_cloning) caps.push(t('cap.clone_full'));
         const capText = caps.length ? caps.join(', ') : 'Unknown';
-        const lowVram = model.id && model.id.includes('0.6B') ? ' Low VRAM option.' : '';
-        li.appendChild(document.createTextNode(` - Use for: ${capText}.${lowVram}`));
+        const lowVram = model.id && model.id.includes('0.6B') ? ` ${t('help.low_vram')}` : '';
+        li.appendChild(document.createTextNode(` - ${t('help.use_for')} ${capText}.${lowVram}`));
 
         list.appendChild(li);
     });
@@ -131,7 +130,7 @@ function updateModelHelp() {
 
     const hint = document.createElement('p');
     hint.className = 'hint';
-    hint.textContent = 'Switching models reloads the server and takes about 1-2 minutes.';
+    hint.textContent = t('help.switch_hint');
     container.appendChild(hint);
 }
 
@@ -161,15 +160,13 @@ function onModelSelect(modelId) {
     pendingModelId = modelId;
     updateModelFeatures(modelId);
     const model = availableModels.find(m => m.id === modelId);
-    document.getElementById('modal-message').innerHTML =
-        `Switch to <strong>${model?.name || modelId}</strong>?<br><br>` +
-        `This will reload the TTS model. Server unavailable for ~2 minutes.`;
+    document.getElementById('modal-message').textContent =
+        `${t('modal.switch_to')} ${model?.name || modelId}? ${t('modal.switch_warn')}`;
     document.getElementById('modal-overlay').classList.add('active');
 }
 
 function cancelSwitch() {
     document.getElementById('modal-overlay').classList.remove('active');
-    // Reset select to current model
     document.getElementById('model-select').value = serverInfo.model;
     updateModelFeatures(serverInfo.model);
     pendingModelId = null;
@@ -188,21 +185,19 @@ async function confirmSwitch() {
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.detail || 'Switch failed');
+            throw new Error(err.detail || t('error.switch_failed'));
         }
 
         const data = await res.json();
-        // Update serverInfo with new capabilities
         serverInfo.model = data.model;
         serverInfo.supports_cloning = data.supports_cloning;
         serverInfo.supports_design = data.supports_design;
         serverInfo.supports_custom_voice = data.supports_custom_voice;
 
-        // Update UI
         await checkStatus();
 
     } catch (e) {
-        alert('Failed to switch model: ' + e.message);
+        alert(`${t('error.switch_failed')}: ${e.message}`);
         document.getElementById('model-select').value = serverInfo.model;
         updateModelFeatures(serverInfo.model);
     } finally {
@@ -216,9 +211,9 @@ function updateTabAvailability(data) {
     const designTab = getTabButton('design');
     const cloneTab = getTabButton('clone');
 
-    setTabState(simpleTab, data.supports_custom_voice, 'Requires CustomVoice model');
-    setTabState(designTab, data.supports_design, 'Requires VoiceDesign model');
-    setTabState(cloneTab, data.supports_cloning, 'Requires Base model');
+    setTabState(simpleTab, data.supports_custom_voice, t('tab.requires_customvoice'));
+    setTabState(designTab, data.supports_design, t('tab.requires_design'));
+    setTabState(cloneTab, data.supports_cloning, t('tab.requires_base'));
     setTabVisibility(simpleTab, data.supports_custom_voice);
     setTabVisibility(designTab, data.supports_design);
     setTabVisibility(cloneTab, data.supports_cloning);
@@ -240,11 +235,11 @@ function updateTabAvailability(data) {
 
 function setTabState(tab, supported, disabledTitle) {
     if (!tab) return;
-    const defaultTitle = tab.dataset.defaultTitle || '';
+    const defaultTitleKey = tab.dataset.defaultTitle || '';
     tab.classList.toggle('tab-disabled', !supported);
     tab.setAttribute('aria-disabled', supported ? 'false' : 'true');
     tab.dataset.supported = supported ? 'true' : 'false';
-    tab.title = supported ? defaultTitle : disabledTitle;
+    tab.title = supported ? t(defaultTitleKey) : disabledTitle;
 }
 
 function setTabVisibility(tab, supported) {
@@ -267,11 +262,10 @@ function switchTab(tab) {
 function showResult(blob) {
     const url = URL.createObjectURL(blob);
     const result = document.getElementById('result');
-    // Restore audio/download elements if they were replaced by showError
     if (!document.getElementById('audio')) {
-        result.innerHTML = '<strong>Result:</strong>' +
+        result.innerHTML = `<strong>${t('misc.result')}</strong>` +
             '<audio id="audio" controls></audio><br>' +
-            '<a id="download" class="download-btn" download="tts_output.wav" title="Download generated WAV">Download WAV</a>';
+            `<a id="download" class="download-btn" download="tts_output.wav" title="${t('misc.download_title')}">${t('misc.download')}</a>`;
     }
     document.getElementById('audio').src = url;
     document.getElementById('download').href = url;
@@ -282,7 +276,7 @@ function showResult(blob) {
 function showError(msg) {
     const result = document.getElementById('result');
     result.className = 'result error';
-    result.innerHTML = '<strong>Error:</strong> ' + msg;
+    result.innerHTML = `<strong>${t('error.prefix')}:</strong> ` + msg;
     result.style.display = 'block';
 }
 
@@ -299,26 +293,23 @@ function setProgressVisible(visible, labelText, hintText) {
 }
 
 function parseErrorDetail(detail) {
-    // Handle FastAPI validation errors (array format)
     if (Array.isArray(detail)) {
         return detail.map(e => e.msg || e.message || JSON.stringify(e)).join('; ');
     }
-    // Handle string errors
     if (typeof detail === 'string') {
         return detail;
     }
-    // Handle object errors
     if (detail && typeof detail === 'object') {
         return detail.msg || detail.message || JSON.stringify(detail);
     }
-    return 'Generation failed';
+    return t('error.generation_failed');
 }
 
 async function generateSimple() {
     const btn = event.target;
     btn.disabled = true;
-    btn.textContent = 'Generating...';
-    setProgressVisible(true, 'Generating audio...', 'First request after model load can be slower.');
+    btn.textContent = t('btn.generating');
+    setProgressVisible(true, t('progress.generating'), t('progress.first_slow'));
 
     try {
         const res = await fetch('/tts', {
@@ -343,7 +334,7 @@ async function generateSimple() {
         showError(e.message);
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Generate Speech';
+        btn.textContent = t('btn.generate');
         setProgressVisible(false);
     }
 }
@@ -351,8 +342,8 @@ async function generateSimple() {
 async function generateDesign() {
     const btn = event.target;
     btn.disabled = true;
-    btn.textContent = 'Generating...';
-    setProgressVisible(true, 'Designing voice...', 'First request after model load can be slower.');
+    btn.textContent = t('btn.generating');
+    setProgressVisible(true, t('progress.designing'), t('progress.first_slow'));
 
     try {
         const form = new FormData();
@@ -374,7 +365,7 @@ async function generateDesign() {
         showError(e.message);
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Generate with Designed Voice';
+        btn.textContent = t('btn.generate_design');
         setProgressVisible(false);
     }
 }
@@ -382,12 +373,12 @@ async function generateDesign() {
 async function generateClone() {
     const btn = event.target;
     btn.disabled = true;
-    btn.textContent = 'Generating...';
-    setProgressVisible(true, 'Cloning voice...', 'First request after model load can be slower.');
+    btn.textContent = t('btn.generating');
+    setProgressVisible(true, t('progress.cloning'), t('progress.first_slow'));
 
     try {
         const audioFile = document.getElementById('clone-audio').files[0];
-        if (!audioFile) throw new Error('Please select a reference audio file');
+        if (!audioFile) throw new Error(t('error.no_ref_audio'));
 
         const form = new FormData();
         form.append('text', document.getElementById('clone-text').value);
@@ -409,7 +400,7 @@ async function generateClone() {
         showError(e.message);
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Generate with Cloned Voice';
+        btn.textContent = t('btn.generate_clone');
         setProgressVisible(false);
     }
 }
@@ -433,6 +424,31 @@ function getAdvancedSettings(prefix) {
 }
 
 function openAdvancedHelp() {
+    const container = document.getElementById('advanced-help-content');
+    container.innerHTML = '';
+    const intro = document.createElement('p');
+    intro.textContent = t('help.params_intro');
+    container.appendChild(intro);
+
+    const ul = document.createElement('ul');
+    ul.className = 'param-help-list';
+    const params = [
+        ['param.temperature', '0.9', 'help.temp_desc'],
+        ['param.top_k', '50', 'help.topk_desc'],
+        ['param.top_p', '1.0', 'help.topp_desc'],
+        ['param.rep_penalty', '1.05', 'help.rep_desc'],
+        ['param.max_tokens', '2048', 'help.tokens_desc'],
+    ];
+    params.forEach(([nameKey, def, descKey]) => {
+        const li = document.createElement('li');
+        const strong = document.createElement('strong');
+        strong.textContent = t(nameKey);
+        li.appendChild(strong);
+        li.appendChild(document.createTextNode(` (${def}) — ${t(descKey)}`));
+        ul.appendChild(li);
+    });
+    container.appendChild(ul);
+
     document.getElementById('advanced-help-overlay').classList.add('active');
 }
 
@@ -440,5 +456,8 @@ function closeAdvancedHelp() {
     document.getElementById('advanced-help-overlay').classList.remove('active');
 }
 
+// Boot: apply translations first, then load status
+applyTranslations();
+updateLangToggle();
 checkStatus();
 """

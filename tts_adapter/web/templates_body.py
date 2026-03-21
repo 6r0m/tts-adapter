@@ -5,64 +5,71 @@ def _advanced_settings(prefix: str) -> str:
     """Generate collapsible advanced settings section for a tab."""
     return f"""
             <details class="advanced-settings">
-                <summary><span class="advanced-arrow"></span> Advanced Settings
-                    <button type="button" class="param-help" onclick="event.preventDefault(); event.stopPropagation(); openAdvancedHelp()" title="Parameter guide" aria-label="Parameter guide">?</button>
+                <summary><span class="advanced-arrow"></span> <span data-i18n="advanced.title">Advanced Settings</span>
+                    <button type="button" class="param-help" onclick="event.preventDefault(); event.stopPropagation(); openAdvancedHelp()" data-i18n-title="advanced.guide" title="Parameter guide" aria-label="Parameter guide">?</button>
                 </summary>
                 <div class="advanced-grid">
                     <div>
-                        <label for="{prefix}-temperature">Temperature</label>
-                        <input type="number" id="{prefix}-temperature" value="0.9" min="0.01" max="2.0" step="0.05" title="Controls randomness. Lower (0.3-0.7) = more consistent output. Higher (1.0+) = more varied but may reduce quality. Default: 0.9">
+                        <label for="{prefix}-temperature" data-i18n="param.temperature">Temperature</label>
+                        <input type="number" id="{prefix}-temperature" value="0.9" min="0.01" max="2.0" step="0.05" data-i18n-title="param.temp_tip" title="Controls randomness. Default: 0.9">
                     </div>
                     <div>
-                        <label for="{prefix}-top_k">Top-K</label>
-                        <input type="number" id="{prefix}-top_k" value="50" min="1" max="200" step="1" title="Limits sampling to top K most likely tokens. Lower (10-30) = more focused, predictable. Higher = more diverse. Default: 50">
+                        <label for="{prefix}-top_k" data-i18n="param.top_k">Top-K</label>
+                        <input type="number" id="{prefix}-top_k" value="50" min="1" max="200" step="1" data-i18n-title="param.topk_tip" title="Top-k sampling. Default: 50">
                     </div>
                     <div>
-                        <label for="{prefix}-top_p">Top-P</label>
-                        <input type="number" id="{prefix}-top_p" value="1.0" min="0.1" max="1.0" step="0.05" title="Nucleus sampling: only tokens whose cumulative probability reaches P are considered. Lower (0.7-0.9) cuts unlikely tokens. Default: 1.0">
+                        <label for="{prefix}-top_p" data-i18n="param.top_p">Top-P</label>
+                        <input type="number" id="{prefix}-top_p" value="1.0" min="0.1" max="1.0" step="0.05" data-i18n-title="param.topp_tip" title="Nucleus sampling. Default: 1.0">
                     </div>
                     <div>
-                        <label for="{prefix}-repetition_penalty">Repetition Penalty</label>
-                        <input type="number" id="{prefix}-repetition_penalty" value="1.05" min="1.0" max="2.0" step="0.05" title="Penalizes repeated tokens. Increase (1.1-1.3) if you hear repeated sounds or artifacts. Too high may distort speech. Default: 1.05">
+                        <label for="{prefix}-repetition_penalty" data-i18n="param.rep_penalty">Repetition Penalty</label>
+                        <input type="number" id="{prefix}-repetition_penalty" value="1.05" min="1.0" max="2.0" step="0.05" data-i18n-title="param.rep_tip" title="Repetition penalty. Default: 1.05">
                     </div>
                     <div>
-                        <label for="{prefix}-max_new_tokens">Max Tokens</label>
-                        <input type="number" id="{prefix}-max_new_tokens" value="2048" min="256" max="4096" step="256" title="Maximum audio codec tokens to generate. Increase for very long texts. ~256 tokens = ~5-10 seconds of audio. Default: 2048">
+                        <label for="{prefix}-max_new_tokens" data-i18n="param.max_tokens">Max Tokens</label>
+                        <input type="number" id="{prefix}-max_new_tokens" value="2048" min="256" max="4096" step="256" data-i18n-title="param.tokens_tip" title="Max codec tokens. Default: 2048">
                     </div>
                 </div>
             </details>"""
 
 
 INDEX_BODY = """
-    <h1>TTS Adapter</h1>
-    <p class="subtitle">Text-to-Speech Generation</p>
+    <div class="title-row">
+        <div>
+            <h1 data-i18n="app.title">TTS Adapter</h1>
+            <p class="subtitle" data-i18n="app.subtitle">Text-to-Speech Generation</p>
+        </div>
+        <button id="lang-toggle" type="button" class="lang-toggle"
+            aria-label="Switch UI language"
+            onclick="switchUiLang(currentLang === 'ru' ? 'en' : 'ru')">EN</button>
+    </div>
 
-    <div id="status" class="status">Checking server status...</div>
+    <div id="status" class="status" data-i18n="status.checking">Checking server status...</div>
 
     <div class="model-selector">
-        <label for="model-select">Model:</label>
-        <select id="model-select" onchange="onModelSelect(this.value)" title="Switch TTS model (reloads server)">
-            <option value="">Loading...</option>
+        <label for="model-select" data-i18n="model.label">Model:</label>
+        <select id="model-select" onchange="onModelSelect(this.value)" data-i18n-title="model.switch_title" title="Switch TTS model (reloads server)">
+            <option value="" data-i18n="model.loading">Loading...</option>
         </select>
-        <button type="button" class="model-help" onclick="openModelHelp()" title="Model guide" aria-label="Model guide">?</button>
-        <span id="model-features" title="Capabilities for selected model"></span>
+        <button type="button" class="model-help" onclick="openModelHelp()" data-i18n-title="model.guide" title="Model guide" aria-label="Model guide">?</button>
+        <span id="model-features" data-i18n-title="model.features_title" title="Capabilities for selected model"></span>
     </div>
 
     <!-- Loading overlay -->
     <div id="loading-overlay" class="loading-overlay">
         <div class="loading-spinner"></div>
-        <div class="loading-text">Switching model...</div>
-        <div class="loading-hint">This may take 1-2 minutes. Please wait.</div>
+        <div class="loading-text" data-i18n="loading.text">Switching model...</div>
+        <div class="loading-hint" data-i18n="loading.hint">This may take 1-2 minutes. Please wait.</div>
     </div>
 
     <!-- Confirmation modal -->
     <div id="modal-overlay" class="modal-overlay">
         <div class="modal">
-            <h3>Switch Model?</h3>
-            <p id="modal-message">This will reload the TTS model. The server will be unavailable for ~2 minutes during reload.</p>
+            <h3 data-i18n="modal.switch_title">Switch Model?</h3>
+            <p id="modal-message" data-i18n="modal.switch_msg">This will reload the TTS model. Server unavailable for ~2 minutes.</p>
             <div class="modal-buttons">
-                <button class="btn-cancel" onclick="cancelSwitch()" title="Cancel model switch" type="button">Cancel</button>
-                <button class="btn-confirm" onclick="confirmSwitch()" title="Confirm model switch" type="button">Switch Model</button>
+                <button class="btn-cancel" onclick="cancelSwitch()" data-i18n-title="modal.cancel_title" title="Cancel model switch" type="button" data-i18n="modal.cancel">Cancel</button>
+                <button class="btn-confirm" onclick="confirmSwitch()" data-i18n-title="modal.confirm_title" title="Confirm model switch" type="button" data-i18n="modal.confirm_switch">Switch Model</button>
             </div>
         </div>
     </div>
@@ -70,10 +77,10 @@ INDEX_BODY = """
     <!-- Model help modal -->
     <div id="model-help-overlay" class="modal-overlay">
         <div class="modal">
-            <h3>Model Guide</h3>
-            <div id="model-help-list">Loading model info...</div>
+            <h3 data-i18n="help.model_title">Model Guide</h3>
+            <div id="model-help-list" data-i18n="help.model_loading">Loading model info...</div>
             <div class="modal-buttons">
-                <button class="btn-confirm" onclick="closeModelHelp()" title="Close model guide" type="button">Got it</button>
+                <button class="btn-confirm" onclick="closeModelHelp()" data-i18n-title="help.close_model" title="Close model guide" type="button" data-i18n="help.got_it">Got it</button>
             </div>
         </div>
     </div>
@@ -81,39 +88,30 @@ INDEX_BODY = """
     <!-- Advanced settings help modal -->
     <div id="advanced-help-overlay" class="modal-overlay">
         <div class="modal">
-            <h3>Generation Parameters</h3>
-            <div class="advanced-help-content">
-                <p>These parameters control how the model generates audio tokens. Defaults work well for most cases.</p>
-                <ul class="param-help-list">
-                    <li><strong>Temperature</strong> (0.9) &mdash; Controls randomness. Lower values (0.3-0.7) produce more consistent, deterministic output. Higher values (1.0-1.5) add variety but may reduce quality.</li>
-                    <li><strong>Top-K</strong> (50) &mdash; Limits sampling to the K most likely tokens at each step. Lower values (10-30) make output more focused. Higher values allow more diversity.</li>
-                    <li><strong>Top-P</strong> (1.0) &mdash; Nucleus sampling: only considers tokens whose cumulative probability reaches P. Lower values (0.7-0.9) cut unlikely tokens. At 1.0 all tokens are considered.</li>
-                    <li><strong>Repetition Penalty</strong> (1.05) &mdash; Penalizes tokens that already appeared. Increase (1.1-1.3) if you hear repeated sounds or artifacts. Too high may distort speech.</li>
-                    <li><strong>Max Tokens</strong> (2048) &mdash; Maximum number of audio codec tokens to generate. Increase for very long texts. Each ~256 tokens is roughly 5-10 seconds of audio.</li>
-                </ul>
-            </div>
+            <h3 data-i18n="help.params_title">Generation Parameters</h3>
+            <div id="advanced-help-content" class="advanced-help-content"></div>
             <div class="modal-buttons">
-                <button class="btn-confirm" onclick="closeAdvancedHelp()" title="Close parameter guide" type="button">Got it</button>
+                <button class="btn-confirm" onclick="closeAdvancedHelp()" data-i18n-title="help.close_params" title="Close parameter guide" type="button" data-i18n="help.got_it">Got it</button>
             </div>
         </div>
     </div>
 
     <div class="card">
         <div class="tabs">
-            <button class="tab active" data-tab="simple" onclick="switchTab('simple')" title="Simple TTS (CustomVoice model)" data-default-title="Simple TTS (CustomVoice model)" type="button">Simple</button>
-            <button class="tab" data-tab="design" onclick="switchTab('design')" title="Voice Design (VoiceDesign model)" data-default-title="Voice Design (VoiceDesign model)" type="button">Voice Design</button>
-            <button class="tab" data-tab="clone" onclick="switchTab('clone')" title="Voice Clone (Base model)" data-default-title="Voice Clone (Base model)" type="button">Voice Clone</button>
+            <button class="tab active" data-tab="simple" onclick="switchTab('simple')" data-i18n-title="tab.simple_title" title="Simple TTS (CustomVoice model)" data-default-title="tab.simple_title" type="button" data-i18n="tab.simple">Simple</button>
+            <button class="tab" data-tab="design" onclick="switchTab('design')" data-i18n-title="tab.design_title" title="Voice Design (VoiceDesign model)" data-default-title="tab.design_title" type="button" data-i18n="tab.design">Voice Design</button>
+            <button class="tab" data-tab="clone" onclick="switchTab('clone')" data-i18n-title="tab.clone_title" title="Voice Clone (Base model)" data-default-title="tab.clone_title" type="button" data-i18n="tab.clone">Voice Clone</button>
         </div>
 
         <!-- Simple TTS Tab -->
         <div id="tab-simple" class="tab-content active">
-            <label for="text">Text to speak</label>
-            <textarea id="text" placeholder="Enter text here..." title="Required text to synthesize"></textarea>
+            <label for="text" data-i18n="label.text">Text to speak</label>
+            <textarea id="text" data-i18n-placeholder="ph.text" placeholder="Enter text here..." data-i18n-title="title.text" title="Required text to synthesize"></textarea>
 
             <div class="row">
                 <div>
-                    <label for="language">Language</label>
-                    <select id="language" title="Language for output speech">
+                    <label for="language" data-i18n="label.language">Language</label>
+                    <select id="language" data-i18n-title="title.language" title="Language for output speech">
                         <option value="Russian">Russian</option>
                         <option value="English">English</option>
                         <option value="Chinese">Chinese</option>
@@ -127,87 +125,87 @@ INDEX_BODY = """
                     </select>
                 </div>
                 <div>
-                    <label for="speaker">Speaker</label>
-                    <select id="speaker" title="Preset speaker (CustomVoice model)">
-                        <option value="Serena">Serena (Female, warm)</option>
-                        <option value="Sohee">Sohee (Female, emotional)</option>
-                        <option value="Vivian">Vivian (Female, bright)</option>
-                        <option value="Ono_Anna">Ono_Anna (Female, playful)</option>
-                        <option value="Ryan">Ryan (Male, dynamic)</option>
-                        <option value="Aiden">Aiden (Male, clear)</option>
-                        <option value="Uncle_Fu">Uncle_Fu (Male, mellow)</option>
-                        <option value="Dylan">Dylan (Male, youthful)</option>
-                        <option value="Eric">Eric (Male, lively)</option>
+                    <label for="speaker" data-i18n="label.speaker">Speaker</label>
+                    <select id="speaker" data-i18n-title="title.speaker" title="Preset speaker (CustomVoice model)">
+                        <option value="Serena" data-i18n="speaker.serena">Serena (Female, warm)</option>
+                        <option value="Sohee" data-i18n="speaker.sohee">Sohee (Female, emotional)</option>
+                        <option value="Vivian" data-i18n="speaker.vivian">Vivian (Female, bright)</option>
+                        <option value="Ono_Anna" data-i18n="speaker.ono_anna">Ono_Anna (Female, playful)</option>
+                        <option value="Ryan" data-i18n="speaker.ryan">Ryan (Male, dynamic)</option>
+                        <option value="Aiden" data-i18n="speaker.aiden">Aiden (Male, clear)</option>
+                        <option value="Uncle_Fu" data-i18n="speaker.uncle_fu">Uncle_Fu (Male, mellow)</option>
+                        <option value="Dylan" data-i18n="speaker.dylan">Dylan (Male, youthful)</option>
+                        <option value="Eric" data-i18n="speaker.eric">Eric (Male, lively)</option>
                     </select>
                 </div>
             </div>
 
-            <label for="instruct">Style instruction (optional)</label>
-            <input type="text" id="instruct" placeholder="e.g., Speak slowly and warmly" title="Optional style instruction (CustomVoice model)">
-            <p class="hint">Control tone, emotion, speed. Works with CustomVoice model only.</p>
+            <label for="instruct" data-i18n="label.instruct">Style instruction (optional)</label>
+            <input type="text" id="instruct" data-i18n-placeholder="ph.instruct" placeholder="e.g., Speak slowly and warmly" data-i18n-title="title.instruct" title="Optional style instruction (CustomVoice model)">
+            <p class="hint" data-i18n="hint.instruct">Control tone, emotion, speed. Works with CustomVoice model only.</p>
 """ + _advanced_settings("simple") + """
 
-            <button onclick="generateSimple()" title="Generate speech with current settings" type="button">Generate Speech</button>
+            <button onclick="generateSimple()" data-i18n-title="btn.generate_title" title="Generate speech with current settings" type="button" data-i18n="btn.generate">Generate Speech</button>
         </div>
 
         <!-- Voice Design Tab -->
         <div id="tab-design" class="tab-content">
-            <label for="design-text">Text to speak</label>
-            <textarea id="design-text" placeholder="Enter text here..." title="Required text to synthesize"></textarea>
+            <label for="design-text" data-i18n="label.text">Text to speak</label>
+            <textarea id="design-text" data-i18n-placeholder="ph.text" placeholder="Enter text here..." data-i18n-title="title.text" title="Required text to synthesize"></textarea>
 
-            <label for="design-language">Language</label>
-            <select id="design-language" title="Language for output speech">
+            <label for="design-language" data-i18n="label.language">Language</label>
+            <select id="design-language" data-i18n-title="title.language" title="Language for output speech">
                 <option value="Russian">Russian</option>
                 <option value="English">English</option>
                 <option value="Chinese">Chinese</option>
             </select>
 
-            <label for="design-instruct">Voice description (required)</label>
-            <textarea id="design-instruct" placeholder="e.g., Adult female voice, contralto range, warm and confident, expressive" title="Required voice description (VoiceDesign model)"></textarea>
-            <p class="hint">Describe the voice: gender, age, pitch, timbre, emotion, pace. We trim trailing silence.</p>
+            <label for="design-instruct" data-i18n="label.design_instruct">Voice description (required)</label>
+            <textarea id="design-instruct" data-i18n-placeholder="ph.design_instruct" placeholder="e.g., Adult female voice, contralto range, warm and confident, expressive" data-i18n-title="title.design_instruct" title="Required voice description (VoiceDesign model)"></textarea>
+            <p class="hint" data-i18n="hint.design">Describe the voice: gender, age, pitch, timbre, emotion, pace. We trim trailing silence.</p>
 """ + _advanced_settings("design") + """
 
-            <button onclick="generateDesign()" title="Generate speech with designed voice" type="button">Generate with Designed Voice</button>
+            <button onclick="generateDesign()" data-i18n-title="btn.design_title" title="Generate speech with designed voice" type="button" data-i18n="btn.generate_design">Generate with Designed Voice</button>
         </div>
 
         <!-- Voice Clone Tab -->
         <div id="tab-clone" class="tab-content">
-            <label for="clone-text">Text to speak</label>
-            <textarea id="clone-text" placeholder="Enter text here..." title="Required text to synthesize"></textarea>
+            <label for="clone-text" data-i18n="label.text">Text to speak</label>
+            <textarea id="clone-text" data-i18n-placeholder="ph.text" placeholder="Enter text here..." data-i18n-title="title.text" title="Required text to synthesize"></textarea>
 
-            <label for="clone-language">Language</label>
-            <select id="clone-language" title="Language for output speech">
+            <label for="clone-language" data-i18n="label.language">Language</label>
+            <select id="clone-language" data-i18n-title="title.language" title="Language for output speech">
                 <option value="Russian">Russian</option>
                 <option value="English">English</option>
                 <option value="Chinese">Chinese</option>
             </select>
 
-            <label for="clone-audio">Reference audio (WAV, 3-10 sec)</label>
-            <input type="file" id="clone-audio" accept=".wav,audio/wav" title="Required WAV file, 3-10 seconds">
+            <label for="clone-audio" data-i18n="label.ref_audio">Reference audio (WAV, 3-10 sec)</label>
+            <input type="file" id="clone-audio" accept=".wav,audio/wav" data-i18n-title="title.ref_audio" title="Required WAV file, 3-10 seconds">
 
-            <label for="clone-ref-text">Reference transcript (optional, improves quality)</label>
-            <input type="text" id="clone-ref-text" placeholder="What is said in the reference audio" title="Optional transcript of the reference audio">
+            <label for="clone-ref-text" data-i18n="label.ref_text">Reference transcript (optional, improves quality)</label>
+            <input type="text" id="clone-ref-text" data-i18n-placeholder="ph.ref_text" placeholder="What is said in the reference audio" data-i18n-title="title.ref_text" title="Optional transcript of the reference audio">
 """ + _advanced_settings("clone") + """
 
-            <button onclick="generateClone()" title="Generate speech with cloned voice" type="button">Generate with Cloned Voice</button>
+            <button onclick="generateClone()" data-i18n-title="btn.clone_title" title="Generate speech with cloned voice" type="button" data-i18n="btn.generate_clone">Generate with Cloned Voice</button>
         </div>
 
         <div id="gen-progress" class="progress" aria-live="polite">
-            <div id="gen-progress-label" class="progress-label">Generating audio...</div>
+            <div id="gen-progress-label" class="progress-label" data-i18n="progress.generating">Generating audio...</div>
             <div class="progress-bar"><div class="progress-bar-inner"></div></div>
-            <div id="gen-progress-hint" class="progress-hint">First request after model load can be slower.</div>
+            <div id="gen-progress-hint" class="progress-hint" data-i18n="progress.first_slow">First request after model load can be slower.</div>
         </div>
 
         <div id="result" class="result">
-            <strong>Result:</strong>
+            <strong data-i18n="misc.result">Result:</strong>
             <audio id="audio" controls></audio>
             <br>
-            <a id="download" class="download-btn" download="tts_output.wav" title="Download generated WAV">Download WAV</a>
+            <a id="download" class="download-btn" download="tts_output.wav" data-i18n-title="misc.download_title" title="Download generated WAV" data-i18n="misc.download">Download WAV</a>
         </div>
     </div>
 
     <p style="text-align: center; color: #999; font-size: 12px;">
-        <a href="/docs" style="color: #666;">API Documentation</a> |
-        <a href="/health" style="color: #666;">Health Check</a>
+        <a href="/docs" style="color: #666;" data-i18n="footer.api_docs">API Documentation</a> |
+        <a href="/health" style="color: #666;" data-i18n="footer.health">Health Check</a>
     </p>
 """
