@@ -48,6 +48,9 @@ def get_qwen3_settings() -> Qwen3Settings:
     return Qwen3Settings()
 
 
+_GEN_KWARG_KEYS = {"temperature", "top_k", "top_p", "repetition_penalty", "max_new_tokens"}
+
+
 class Qwen3Engine:
     """Qwen3-TTS engine implementation.
 
@@ -146,12 +149,18 @@ class Qwen3Engine:
             )
         return self._default_language
 
+    @staticmethod
+    def _filter_gen_kwargs(**kwargs) -> dict:
+        """Extract recognized generation kwargs, dropping None values."""
+        return {k: v for k, v in kwargs.items() if k in _GEN_KWARG_KEYS and v is not None}
+
     def synthesize(
         self,
         text: str,
         language: str = "Auto",
         speaker: str = "default",
         instruct: str = "",
+        **kwargs,
     ) -> bytes:
         """Generate WAV audio bytes from text."""
         if self._model is None:
@@ -159,6 +168,7 @@ class Qwen3Engine:
 
         actual_speaker = self._resolve_speaker(speaker)
         actual_language = self._resolve_language(language)
+        gen_kwargs = self._filter_gen_kwargs(**kwargs)
 
         with self._lock:
             wavs, sr = self._model.generate_custom_voice(
@@ -166,6 +176,7 @@ class Qwen3Engine:
                 language=actual_language,
                 speaker=actual_speaker,
                 instruct=instruct,
+                **gen_kwargs,
             )
 
         wav = self._trim_silence(wavs[0], sr)
@@ -179,6 +190,7 @@ class Qwen3Engine:
         language: str = "Auto",
         speaker: str = "default",
         instruct: str = "",
+        **kwargs,
     ) -> list[bytes]:
         """Batch generation - multiple prompts in one forward pass."""
         if not texts:
@@ -189,6 +201,7 @@ class Qwen3Engine:
 
         actual_speaker = self._resolve_speaker(speaker)
         actual_language = self._resolve_language(language)
+        gen_kwargs = self._filter_gen_kwargs(**kwargs)
 
         with self._lock:
             wavs, sr = self._model.generate_custom_voice(
@@ -196,6 +209,7 @@ class Qwen3Engine:
                 language=actual_language,
                 speaker=actual_speaker,
                 instruct=instruct,
+                **gen_kwargs,
             )
 
         results = []
@@ -213,6 +227,7 @@ class Qwen3Engine:
         reference_audio: str | bytes,
         language: str = "Auto",
         reference_text: str | None = None,
+        **kwargs,
     ) -> bytes:
         """Generate speech by cloning voice from reference audio.
 
@@ -243,6 +258,8 @@ class Qwen3Engine:
         # Use x_vector_only_mode when no transcript provided
         use_x_vector_only = not reference_text or reference_text.strip() == ""
 
+        gen_kwargs = self._filter_gen_kwargs(**kwargs)
+
         try:
             with self._lock:
                 wavs, sr = self._model.generate_voice_clone(
@@ -251,6 +268,7 @@ class Qwen3Engine:
                     ref_audio=audio_path,
                     ref_text=reference_text or "",
                     x_vector_only_mode=use_x_vector_only,
+                    **gen_kwargs,
                 )
         finally:
             if temp_path:
@@ -267,6 +285,7 @@ class Qwen3Engine:
         text: str,
         instruct: str,
         language: str = "Auto",
+        **kwargs,
     ) -> bytes:
         """Generate speech with designed voice from natural language description.
 
@@ -282,11 +301,14 @@ class Qwen3Engine:
 
         actual_language = self._resolve_language(language)
 
+        gen_kwargs = self._filter_gen_kwargs(**kwargs)
+
         with self._lock:
             wavs, sr = self._model.generate_voice_design(
                 text=text,
                 language=actual_language,
                 instruct=instruct,
+                **gen_kwargs,
             )
 
         wav = self._trim_silence(wavs[0], sr)

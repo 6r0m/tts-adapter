@@ -1,6 +1,6 @@
 """TTS Engine protocol - the universal interface for all TTS backends."""
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -23,6 +23,7 @@ class TTSEngine(Protocol):
         language: str = "Auto",
         speaker: str = "default",
         instruct: str = "",
+        **kwargs: Any,
     ) -> bytes:
         """Generate WAV audio bytes from text.
 
@@ -43,6 +44,7 @@ class TTSEngine(Protocol):
         language: str = "Auto",
         speaker: str = "default",
         instruct: str = "",
+        **kwargs: Any,
     ) -> list[bytes]:
         """Batch generation - multiple prompts in one forward pass.
 
@@ -93,6 +95,7 @@ class TTSEngine(Protocol):
         reference_audio: bytes,
         language: str = "Auto",
         reference_text: str | None = None,
+        **kwargs: Any,
     ) -> bytes:
         """Clone voice from reference audio.
 
@@ -115,6 +118,7 @@ class TTSEngine(Protocol):
         text: str,
         instruct: str,
         language: str = "Auto",
+        **kwargs: Any,
     ) -> bytes:
         """Generate speech with voice designed from description.
 

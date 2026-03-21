@@ -320,7 +320,8 @@ async function generateSimple() {
                 text: document.getElementById('text').value,
                 language: document.getElementById('language').value,
                 speaker: document.getElementById('speaker').value,
-                instruct: document.getElementById('instruct').value
+                instruct: document.getElementById('instruct').value,
+                generation: getAdvancedSettings('simple')
             })
         });
 
@@ -350,6 +351,8 @@ async function generateDesign() {
         form.append('text', document.getElementById('design-text').value);
         form.append('language', document.getElementById('design-language').value);
         form.append('instruct', document.getElementById('design-instruct').value);
+        const designSettings = getAdvancedSettings('design');
+        Object.entries(designSettings).forEach(([k, v]) => form.append(k, v));
 
         const res = await fetch('/tts/design', { method: 'POST', body: form });
 
@@ -383,6 +386,8 @@ async function generateClone() {
         form.append('language', document.getElementById('clone-language').value);
         form.append('reference_audio', audioFile);
         form.append('reference_text', document.getElementById('clone-ref-text').value);
+        const cloneSettings = getAdvancedSettings('clone');
+        Object.entries(cloneSettings).forEach(([k, v]) => form.append(k, v));
 
         const res = await fetch('/tts/clone', { method: 'POST', body: form });
 
@@ -399,6 +404,24 @@ async function generateClone() {
         btn.textContent = 'Generate with Cloned Voice';
         setProgressVisible(false);
     }
+}
+
+function getAdvancedSettings(prefix) {
+    return {
+        temperature: parseFloat(document.getElementById(prefix + '-temperature').value),
+        top_k: parseInt(document.getElementById(prefix + '-top_k').value),
+        top_p: parseFloat(document.getElementById(prefix + '-top_p').value),
+        repetition_penalty: parseFloat(document.getElementById(prefix + '-repetition_penalty').value),
+        max_new_tokens: parseInt(document.getElementById(prefix + '-max_new_tokens').value),
+    };
+}
+
+function openAdvancedHelp() {
+    document.getElementById('advanced-help-overlay').classList.add('active');
+}
+
+function closeAdvancedHelp() {
+    document.getElementById('advanced-help-overlay').classList.remove('active');
 }
 
 checkStatus();

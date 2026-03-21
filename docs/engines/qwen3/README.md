@@ -327,16 +327,7 @@ curl -X POST http://localhost:9880/tts/clone \
 
 ### Generation Parameters
 
-The `generate_voice_clone()` method accepts HuggingFace Transformers generation kwargs for fine-tuning output quality:
-
-| Parameter | Default | Effect |
-|-----------|---------|--------|
-| `temperature` | ~1.0 | Lower = more deterministic, try 0.7-0.8 |
-| `top_p` | ~0.9 | Nucleus sampling threshold |
-| `top_k` | - | Limit token choices |
-| `repetition_penalty` | 1.0 | Higher reduces repetition artifacts, try 1.1 |
-
-These parameters are not yet exposed via CLI/API - requires code changes to `synthesize_clone()`.
+See [params.md](params.md) for full reference on generation kwargs (temperature, top_k, top_p, etc.). These are exposed in the web UI under "Advanced Settings" and via API.
 
 ### Transcribing Reference Audio
 

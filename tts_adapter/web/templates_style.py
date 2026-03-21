@@ -231,4 +231,58 @@ audio { width: 100%; margin: 10px 0; }
     font-size: 14px;
     color: #666;
 }
+/* Advanced settings */
+.advanced-settings {
+    margin: 10px 0 15px 0;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 0;
+}
+.advanced-settings summary {
+    padding: 10px 12px;
+    cursor: pointer;
+    font-weight: 500;
+    color: #666;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+}
+.advanced-settings summary:hover { color: #333; }
+.advanced-settings[open] summary { border-bottom: 1px solid #e0e0e0; }
+.advanced-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 12px;
+}
+.advanced-grid label { font-size: 12px; color: #666; margin-bottom: 3px; }
+.advanced-grid input {
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 13px;
+    margin-bottom: 0;
+}
+.param-help {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid #f57c00;
+    background: #fff8e1;
+    color: #f57c00;
+    font-weight: 700;
+    font-size: 11px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    margin-left: auto;
+}
+.param-help:hover { background: #ffe0b2; }
+.advanced-help-content { color: #555; font-size: 13px; line-height: 1.5; }
+.param-help-list { margin: 10px 0; padding-left: 18px; }
+.param-help-list li { margin-bottom: 8px; }
 """

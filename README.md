@@ -50,7 +50,7 @@ make download-model     # Downloads to ~/.cache/tts-adapter/models/
 # HF_HUB_OFFLINE=1
 ```
 
-See [Qwen3 Engine docs](docs/engines/qwen3.md#offline-mode) for details.
+See [Qwen3 Engine docs](docs/engines/qwen3/README.md#offline-mode) for details.
 
 ## Web UI
 
@@ -144,7 +144,7 @@ curl -X POST http://localhost:9880/tts/clone \
   --output cloned.wav
 ```
 
-See [Qwen3 Engine docs](docs/engines/qwen3.md#voice-cloning) for details.
+See [Qwen3 Engine docs](docs/engines/qwen3/README.md#voice-cloning) for details.
 
 ### Health Check
 
@@ -158,14 +158,14 @@ curl http://localhost:9880/health
 |----------|-------------|
 | [Architecture](docs/architecture.md) | Design decisions, engine protocol |
 | [API Reference](docs/api-reference.md) | Endpoint specs, request/response formats |
-| [Qwen3 Engine](docs/engines/qwen3.md) | Model variants, speakers, setup |
+| [Qwen3 Engine](docs/engines/qwen3/README.md) | Model variants, speakers, setup |
 | [AGENTS.md](AGENTS.md) | Project instructions for AI agents |
 
 ## Engines
 
 | Engine | Status | Description |
 |--------|--------|-------------|
-| [Qwen3-TTS](docs/engines/qwen3.md) | ✅ Ready | 1.7B/0.6B with voice cloning, preset speakers, instructions |
+| [Qwen3-TTS](docs/engines/qwen3/README.md) | ✅ Ready | 1.7B/0.6B with voice cloning, preset speakers, instructions |
 
 ### Adding New Engines
 

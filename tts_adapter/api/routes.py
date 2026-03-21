@@ -170,6 +170,7 @@ def tts(req: TTSRequest) -> Response:
         language=req.language,
         speaker=req.speaker,
         instruct=req.instruct,
+        **req.generation.to_kwargs(),
     )
     return Response(content=wav_bytes, media_type="audio/wav")
 
@@ -224,12 +225,38 @@ def tts_batch(req: TTSBatchRequest) -> Response:
     )
 
 
+def _collect_gen_kwargs(
+    temperature: float | None,
+    top_k: int | None,
+    top_p: float | None,
+    repetition_penalty: float | None,
+    max_new_tokens: int | None,
+) -> dict:
+    """Collect non-None generation kwargs from Form params."""
+    return {
+        k: v
+        for k, v in {
+            "temperature": temperature,
+            "top_k": top_k,
+            "top_p": top_p,
+            "repetition_penalty": repetition_penalty,
+            "max_new_tokens": max_new_tokens,
+        }.items()
+        if v is not None
+    }
+
+
 @app.post("/tts/clone")
 async def tts_clone(
     text: str = Form(..., description="Text to synthesize"),
     language: str = Form(default="Auto", description="Language code"),
     reference_text: str = Form(default="", description="Transcript of reference audio (improves quality)"),
     reference_audio: UploadFile = File(..., description="Reference audio WAV (3-10 sec)"),
+    temperature: float | None = Form(default=None),
+    top_k: int | None = Form(default=None),
+    top_p: float | None = Form(default=None),
+    repetition_penalty: float | None = Form(default=None),
+    max_new_tokens: int | None = Form(default=None),
 ) -> Response:
     """Generate speech by cloning voice from reference audio.
 
@@ -245,11 +272,13 @@ async def tts_clone(
         )
 
     audio_bytes = await reference_audio.read()
+    gen_kwargs = _collect_gen_kwargs(temperature, top_k, top_p, repetition_penalty, max_new_tokens)
     wav_bytes = engine.synthesize_clone(
         text=text,
         reference_audio=audio_bytes,
         language=language,
         reference_text=reference_text if reference_text else None,
+        **gen_kwargs,
     )
     return Response(content=wav_bytes, media_type="audio/wav")
 
@@ -259,6 +288,11 @@ def tts_design(
     text: str = Form(..., description="Text to synthesize"),
     instruct: str = Form(..., description="Natural language description of the voice"),
     language: str = Form(default="Auto", description="Language code"),
+    temperature: float | None = Form(default=None),
+    top_k: int | None = Form(default=None),
+    top_p: float | None = Form(default=None),
+    repetition_penalty: float | None = Form(default=None),
+    max_new_tokens: int | None = Form(default=None),
 ) -> Response:
     """Generate speech with a designed voice from natural language description.
 
@@ -272,10 +306,12 @@ def tts_design(
             detail="Voice design not supported by current model configuration",
         )
 
+    gen_kwargs = _collect_gen_kwargs(temperature, top_k, top_p, repetition_penalty, max_new_tokens)
     wav_bytes = engine.synthesize_design(
         text=text,
         instruct=instruct,
         language=language,
+        **gen_kwargs,
     )
     return Response(content=wav_bytes, media_type="audio/wav")
 

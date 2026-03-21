@@ -1,5 +1,38 @@
 """HTML body for web UI."""
 
+
+def _advanced_settings(prefix: str) -> str:
+    """Generate collapsible advanced settings section for a tab."""
+    return f"""
+            <details class="advanced-settings">
+                <summary>Advanced Settings
+                    <button type="button" class="param-help" onclick="openAdvancedHelp()" title="Parameter guide" aria-label="Parameter guide">?</button>
+                </summary>
+                <div class="advanced-grid">
+                    <div>
+                        <label for="{prefix}-temperature">Temperature</label>
+                        <input type="number" id="{prefix}-temperature" value="0.9" min="0.01" max="2.0" step="0.05" title="Sampling temperature (default: 0.9)">
+                    </div>
+                    <div>
+                        <label for="{prefix}-top_k">Top-K</label>
+                        <input type="number" id="{prefix}-top_k" value="50" min="1" max="200" step="1" title="Top-k sampling (default: 50)">
+                    </div>
+                    <div>
+                        <label for="{prefix}-top_p">Top-P</label>
+                        <input type="number" id="{prefix}-top_p" value="1.0" min="0.1" max="1.0" step="0.05" title="Nucleus sampling (default: 1.0)">
+                    </div>
+                    <div>
+                        <label for="{prefix}-repetition_penalty">Repetition Penalty</label>
+                        <input type="number" id="{prefix}-repetition_penalty" value="1.05" min="1.0" max="2.0" step="0.05" title="Repetition penalty (default: 1.05)">
+                    </div>
+                    <div>
+                        <label for="{prefix}-max_new_tokens">Max Tokens</label>
+                        <input type="number" id="{prefix}-max_new_tokens" value="2048" min="256" max="4096" step="256" title="Max codec tokens (default: 2048)">
+                    </div>
+                </div>
+            </details>"""
+
+
 INDEX_BODY = """
     <h1>TTS Adapter</h1>
     <p class="subtitle">Text-to-Speech Generation</p>
@@ -41,6 +74,26 @@ INDEX_BODY = """
             <div id="model-help-list">Loading model info...</div>
             <div class="modal-buttons">
                 <button class="btn-confirm" onclick="closeModelHelp()" title="Close model guide" type="button">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advanced settings help modal -->
+    <div id="advanced-help-overlay" class="modal-overlay">
+        <div class="modal">
+            <h3>Generation Parameters</h3>
+            <div class="advanced-help-content">
+                <p>These parameters control how the model generates audio tokens. Defaults work well for most cases.</p>
+                <ul class="param-help-list">
+                    <li><strong>Temperature</strong> (0.9) &mdash; Controls randomness. Lower values (0.3-0.7) produce more consistent, deterministic output. Higher values (1.0-1.5) add variety but may reduce quality.</li>
+                    <li><strong>Top-K</strong> (50) &mdash; Limits sampling to the K most likely tokens at each step. Lower values (10-30) make output more focused. Higher values allow more diversity.</li>
+                    <li><strong>Top-P</strong> (1.0) &mdash; Nucleus sampling: only considers tokens whose cumulative probability reaches P. Lower values (0.7-0.9) cut unlikely tokens. At 1.0 all tokens are considered.</li>
+                    <li><strong>Repetition Penalty</strong> (1.05) &mdash; Penalizes tokens that already appeared. Increase (1.1-1.3) if you hear repeated sounds or artifacts. Too high may distort speech.</li>
+                    <li><strong>Max Tokens</strong> (2048) &mdash; Maximum number of audio codec tokens to generate. Increase for very long texts. Each ~256 tokens is roughly 5-10 seconds of audio.</li>
+                </ul>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-confirm" onclick="closeAdvancedHelp()" title="Close parameter guide" type="button">Got it</button>
             </div>
         </div>
     </div>
@@ -92,6 +145,7 @@ INDEX_BODY = """
             <label for="instruct">Style instruction (optional)</label>
             <input type="text" id="instruct" placeholder="e.g., Speak slowly and warmly" title="Optional style instruction (CustomVoice model)">
             <p class="hint">Control tone, emotion, speed. Works with CustomVoice model only.</p>
+""" + _advanced_settings("simple") + """
 
             <button onclick="generateSimple()" title="Generate speech with current settings" type="button">Generate Speech</button>
         </div>
@@ -111,6 +165,7 @@ INDEX_BODY = """
             <label for="design-instruct">Voice description (required)</label>
             <textarea id="design-instruct" placeholder="e.g., Adult female voice, contralto range, warm and confident, expressive" title="Required voice description (VoiceDesign model)"></textarea>
             <p class="hint">Describe the voice: gender, age, pitch, timbre, emotion, pace. We trim trailing silence.</p>
+""" + _advanced_settings("design") + """
 
             <button onclick="generateDesign()" title="Generate speech with designed voice" type="button">Generate with Designed Voice</button>
         </div>
@@ -132,6 +187,7 @@ INDEX_BODY = """
 
             <label for="clone-ref-text">Reference transcript (optional, improves quality)</label>
             <input type="text" id="clone-ref-text" placeholder="What is said in the reference audio" title="Optional transcript of the reference audio">
+""" + _advanced_settings("clone") + """
 
             <button onclick="generateClone()" title="Generate speech with cloned voice" type="button">Generate with Cloned Voice</button>
         </div>

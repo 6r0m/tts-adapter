@@ -3,6 +3,23 @@
 from pydantic import BaseModel, Field
 
 
+class GenerationSettings(BaseModel):
+    """Optional generation kwargs passed to the model.
+
+    All fields default to None, meaning library defaults are used.
+    """
+
+    temperature: float | None = Field(default=None, ge=0.01, le=2.0, description="Sampling temperature (default: 0.9)")
+    top_k: int | None = Field(default=None, ge=1, le=200, description="Top-k sampling (default: 50)")
+    top_p: float | None = Field(default=None, ge=0.1, le=1.0, description="Nucleus sampling (default: 1.0)")
+    repetition_penalty: float | None = Field(default=None, ge=1.0, le=2.0, description="Repetition penalty (default: 1.05)")
+    max_new_tokens: int | None = Field(default=None, ge=256, le=4096, description="Max codec tokens (default: 2048)")
+
+    def to_kwargs(self) -> dict:
+        """Return only non-None values as a dict for **kwargs passthrough."""
+        return {k: v for k, v in self.model_dump().items() if v is not None}
+
+
 class TTSRequest(BaseModel):
     """Single TTS generation request."""
 
@@ -10,6 +27,7 @@ class TTSRequest(BaseModel):
     language: str = Field(default="Auto", description="Language code or 'Auto'")
     speaker: str = Field(default="default", description="Speaker/voice name")
     instruct: str = Field(default="", description="Style instruction (tone, emotion, speed)")
+    generation: GenerationSettings = Field(default_factory=GenerationSettings, description="Generation parameters")
 
 
 class TTSBatchItem(BaseModel):
