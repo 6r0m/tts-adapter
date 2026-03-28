@@ -349,20 +349,17 @@ class Qwen3Engine:
     @property
     def supports_cloning(self) -> bool:
         """Check if loaded model supports voice cloning."""
-        model_id = str(self._model_path or self._model_id or "")
-        return "Base" in model_id
+        return "Base" in self._model_id
 
     @property
     def supports_design(self) -> bool:
         """Check if loaded model supports voice design."""
-        model_id = str(self._model_path or self._model_id or "")
-        return "VoiceDesign" in model_id
+        return "VoiceDesign" in self._model_id
 
     @property
     def supports_custom_voice(self) -> bool:
         """Check if loaded model supports preset speakers (CustomVoice)."""
-        model_id = str(self._model_path or self._model_id or "")
-        return "CustomVoice" in model_id
+        return "CustomVoice" in self._model_id
 
     @property
     def engine_name(self) -> str:
@@ -371,13 +368,28 @@ class Qwen3Engine:
 
     @property
     def model_id(self) -> str:
-        """Return loaded model identifier (path or HF ID)."""
-        return self._model_path or self._model_id
+        """Return loaded model identifier (HF ID)."""
+        return self._model_id
 
     @property
     def device(self) -> str:
         """Return device string."""
         return self._device
+
+    @staticmethod
+    def _resolve_cache_path(model_id: str) -> str | None:
+        """Resolve HF model ID to local cache snapshot path.
+
+        Works around transformers 4.57.3 _patch_mistral_regex bug that
+        makes a network call even for cached models. Returning a local
+        path makes from_pretrained treat it as local and skip the call.
+        """
+        try:
+            from huggingface_hub import snapshot_download
+
+            return snapshot_download(model_id, local_files_only=True)
+        except Exception:
+            return None
 
     def reload(self, model_id: str) -> None:
         """Reload engine with a different model.
@@ -398,9 +410,9 @@ class Qwen3Engine:
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
-            # Update model ID
+            # Update model ID and resolve local cache path for offline mode
             self._model_id = model_id
-            self._model_path = None  # Clear local path, use HF ID
+            self._model_path = self._resolve_cache_path(model_id)
 
         # Load new model
         self.warmup()
