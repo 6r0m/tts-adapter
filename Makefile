@@ -1,4 +1,4 @@
-.PHONY: help install download-model serve server tts tts-clone tts-design test build up down logs health shell clean
+.PHONY: help install download-model serve server tts tts-clone tts-design test build rebuild up down logs health shell clean
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -20,8 +20,9 @@ help:
 	@echo "  make test batch      - Test batch TTS generation"
 	@echo ""
 	@echo "Docker:"
-	@echo "  make build           - Build GPU image"
-	@echo "  make up              - Start container"
+	@echo "  make build           - Build GPU image (online, one-time)"
+	@echo "  make rebuild         - Force rebuild with no cache"
+	@echo "  make up              - Start container (offline; reuses cached image)"
 	@echo "  make down            - Stop container"
 	@echo "  make logs            - View logs"
 	@echo "  make health          - Test health endpoint"
@@ -125,11 +126,15 @@ clean:
 	@echo "Done!"
 
 # === DOCKER ===
+# Build once online; `up` then runs offline via pull_policy: missing in compose.yml
 build:
 	$(DOCKER_COMPOSE) --profile gpu build
 
+rebuild:
+	$(DOCKER_COMPOSE) --profile gpu build --no-cache --pull
+
 up:
-	$(DOCKER_COMPOSE) --profile gpu up -d
+	$(DOCKER_COMPOSE) --profile gpu up -d --no-build
 	@sleep 2
 	@echo "Started. Run: make health"
 

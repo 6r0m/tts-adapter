@@ -81,13 +81,18 @@ See [.env.example](.env.example) for all options.
 ## Docker
 
 ```bash
-make build    # Build image
-make up       # Start container
+make build    # Build image (online, one-time or after deps change)
+make up       # Start container (offline; reuses cached image)
 make health   # Check health
 make logs     # View logs
 make down     # Stop
+make rebuild  # Force rebuild with --no-cache --pull
 make shell    # Shell into container
 ```
+
+`compose.yml` sets `pull_policy: missing`, so `make up` never rebuilds or pulls
+when the image exists locally — safe to use offline after a one-time `make build`.
+Rebuild only when `uv.lock`, `pyproject.toml`, or the `Dockerfile` changes.
 
 See [Makefile](Makefile) for all targets.
 

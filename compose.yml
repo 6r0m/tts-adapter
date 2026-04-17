@@ -35,7 +35,7 @@ services:
     <<: *common
     container_name: adapter-tts
     profiles: ["gpu"]
-    pull_policy: build
+    pull_policy: missing
     image: ${CI_REGISTRY_IMAGE:-tts}/adapter-tts:${CI_COMMIT_REF_SLUG:-latest}-${CI_PIPELINE_ID:-local}
     networks:
       - default
