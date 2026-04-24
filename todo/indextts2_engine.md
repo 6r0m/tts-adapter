@@ -11,6 +11,20 @@
 
 ---
 
+## Execution order (strict)
+
+1. **Phase 0** — upstream proof on RTX 4070 12 GB (go/no-go gate)
+2. **Qwen3 regression baseline** — run existing Qwen3 smoke tests and record golden outputs *before* any refactor
+3. **Phase 1.5** — extract shared helpers (pure refactor, Qwen3 regressions must pass unchanged)
+4. **Phase 1** — protocol flags + `available_models()`
+5. **Phase 2** — IndexTTS2 engine
+6. **Phase 3** — API validation + route wiring
+7. **Phase 7** — 4070 benchmark + A/B emotion subjective test
+
+Phases 4 (install), 5 (CLI), 6 (docs) run alongside 2–3 as needed.
+
+---
+
 ## Phase 0: Upstream proof — before touching adapter contract
 
 **Goal:** validate IndexTTS2 works on the target hardware *before* we commit to any adapter changes. If upstream can't run reliably, we stop here and pivot to CosyVoice 2.
@@ -59,7 +73,7 @@ Before writing IndexTTS2, audit what already exists in the repo and **reuse, don
 
 - [ ] Extend [tts_adapter/engine.py](../tts_adapter/engine.py) `TTSEngine` protocol:
   - Add `supports_emotional_cloning: bool` property
-  - Add `model_info() -> ModelInfo` method (engines own their metadata — **no engine-name branching in routes**)
+  - Add `available_models() -> list[ModelInfo]` method (engines own their metadata — **no engine-name branching in routes**). Existing `model_id` property already covers "which is current"; **do not add** a separate `model_info()` — one accessor is enough.
   - Extend `synthesize_clone()` signature with **keyword-only** optional params:
     - `emotion_audio: bytes | str | None = None`
     - `emotion_text: str | None = None`
@@ -68,7 +82,7 @@ Before writing IndexTTS2, audit what already exists in the repo and **reuse, don
   - Engine internals may silently ignore unknown kwargs. **API is responsible** for rejecting emotion params against non-supporting engines (see Phase 3).
 - [ ] Extend [tts_adapter/contract.py](../tts_adapter/contract.py):
   - Add `supports_emotional_cloning: bool = False` to `HealthResponse`, `ModelInfo`, `SwitchModelResponse`
-- [ ] Update [tts_adapter/engines/qwen3.py](../tts_adapter/engines/qwen3.py): add `model_info()` returning the existing hardcoded per-variant `ModelInfo`, and `supports_emotional_cloning: bool = False` property. No behavior change.
+- [ ] Update [tts_adapter/engines/qwen3.py](../tts_adapter/engines/qwen3.py): add `available_models()` returning the 4-entry list currently hardcoded in [routes.py:72-105](../tts_adapter/api/routes.py) (moved verbatim), and `supports_emotional_cloning: bool = False` property. No behavior change.
 
 ## Phase 1.5: Extract shared utilities (BEFORE creating IndexTTS2 engine)
 
@@ -91,14 +105,16 @@ Before writing IndexTTS2, audit what already exists in the repo and **reuse, don
     - `use_fp16: bool = True`
     - `use_cuda_kernel: bool = False` — benchmark before enabling
     - `use_deepspeed: bool = False` — official docs note may be faster or slower depending on hardware
+    - `use_random: bool = False` — **default False for clone fidelity**. Upstream warns random sampling can reduce cloning quality. Pass through to `infer(use_random=...)`.
+    - `trim_silence: bool = False` — **default False**. Emotional speech includes breaths / pauses / expressive endings that trimming would cut. Opt-in only if Phase 0 shows bad leading/trailing silence.
   - **Do NOT pass `device`** to `IndexTTS2(...)` constructor — upstream constructor does not expose it. Control GPU via `CUDA_VISIBLE_DEVICES` in the process environment instead. (Verify constructor signature in Phase 0.)
   - `IndexTTS2Engine` class:
     - Lazy `from indextts.infer_v2 import IndexTTS2` in `warmup()`. If missing → raise `RuntimeError` with exact install steps pointing to `docs/engines/indextts2/README.md`.
     - Construct with `cfg_path`, `model_dir`, `use_fp16`, `use_cuda_kernel`, `use_deepspeed` — **no other kwargs** until verified upstream.
     - `synthesize_clone(text, reference_audio, *, emotion_audio=None, emotion_text=None, emotion_vector=None, emotion_alpha=1.0, **kwargs) -> bytes`:
       - Use `bytes_to_tempfile(reference_audio)` context manager (nested for `emotion_audio` if provided) — **reused helper, no inline tempfile code**
-      - Dispatch to `self._model.infer(spk_audio_prompt=..., emo_audio_prompt=..., use_emo_text=(emotion_text is not None), emo_text=emotion_text, emo_vector=emotion_vector, emo_alpha=emotion_alpha, text=..., output_path=<output_tempfile>)`
-      - Read output WAV bytes, optionally pass through `trim_silence` (decide in Phase 0 based on observed leading/trailing silence)
+      - Dispatch to `self._model.infer(spk_audio_prompt=..., emo_audio_prompt=..., use_emo_text=(emotion_text is not None), emo_text=emotion_text, emo_vector=emotion_vector, emo_alpha=emotion_alpha, use_random=self._use_random, text=..., output_path=<output_tempfile>)`
+      - Read output WAV bytes. **Do NOT trim by default** — emotional speech relies on breaths, pauses, and expressive tails that `trim_silence` would cut. Apply `trim_silence` only if `TTS_INDEXTTS2_TRIM_SILENCE=true`. (Decision point revisits in Phase 0 based on observed output.)
       - `_lock` around the `infer()` call for GPU serialization (same pattern as Qwen3)
     - `synthesize()`, `synthesize_batch()`, `synthesize_design()` → `raise NotImplementedError("IndexTTS2 supports /tts/clone only. Use Qwen3 for preset speakers.")`
     - `reload(model_dir)` → call `gpu_utils.unload_gpu_model(self._model)` under lock, then re-warmup (**reuses shared helper** — same lifecycle as Qwen3)
@@ -114,6 +130,17 @@ Before writing IndexTTS2, audit what already exists in the repo and **reuse, don
   - `emotion_vector: str = Form(default="")` (comma-separated 8 floats; empty = unused)
   - `emotion_alpha: float = Form(default=1.0)`
 - [ ] Reuse existing [`_collect_gen_kwargs`](../tts_adapter/api/routes.py#L228) helper for generation params (no duplication)
+- [ ] **Upload size guard** (applies to both `reference_audio` and `emotion_audio` — DoS protection, runs before any bytes are buffered into RAM):
+  ```python
+  _MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB per file
+
+  def _validate_upload_size(upload: UploadFile | None, field: str) -> None:
+      if upload is None or upload.size is None:
+          return
+      if upload.size > _MAX_UPLOAD_BYTES:
+          raise HTTPException(413, f"{field} exceeds {_MAX_UPLOAD_BYTES // (1024*1024)} MB limit")
+  ```
+  Apply to both uploads at the top of `/tts/clone`. Duration-based validation (recommended `emotion_audio` ≈ 2–10 s) can come later — size cap is the immediate DoS fix.
 - [ ] **API-side validation (mandatory — do NOT silently ignore):**
   ```python
   has_emotion = any([
@@ -140,14 +167,14 @@ Before writing IndexTTS2, audit what already exists in the repo and **reuse, don
       if len(vec) != 8:
           raise HTTPException(400, "emotion_vector must have exactly 8 floats: [happy,angry,sad,afraid,disgusted,melancholic,surprised,calm]")
   ```
-- [ ] Refactor `/models` to use `engine.model_info()` — remove the hardcoded `AVAILABLE_MODELS` list from routes.py, move per-variant list into qwen3 engine. Route becomes:
+- [ ] Refactor `/models` to use `engine.available_models()` — remove the hardcoded `AVAILABLE_MODELS` list from [routes.py:72-105](../tts_adapter/api/routes.py), move per-variant list into qwen3 engine. Route becomes:
   ```python
   @app.get("/models")
   def list_models():
       engine = get_engine()
       return ModelsResponse(current=engine.model_id, available=engine.available_models())
   ```
-  (qwen3 returns its 4-entry variant list; indextts2 returns its single-entry list)
+  (qwen3 returns its 4-entry variant list; indextts2 returns its single-entry list). The existing `model_id` property covers "which is current" — no new `model_info()` accessor needed.
 - [ ] `/health` returns new `supports_emotional_cloning` flag
 
 ## Phase 4: Install & isolation
@@ -198,11 +225,12 @@ Before writing IndexTTS2, audit what already exists in the repo and **reuse, don
     -F 'emotion_text=very excited' -F 'emotion_alpha=0.6' \
     --output out.wav
   ```
-- [ ] API rejection tests (must return 400):
-  - emotion params sent while `TTS_ENGINE=qwen3`
-  - multiple emotion modes in one request
-  - `emotion_alpha=1.5`
-  - `emotion_vector="1,2,3"` (wrong length)
+- [ ] API rejection tests:
+  - emotion params sent while `TTS_ENGINE=qwen3` → 400
+  - multiple emotion modes in one request → 400
+  - `emotion_alpha=1.5` → 400
+  - `emotion_vector="1,2,3"` (wrong length) → 400
+  - oversized upload (>20 MB WAV as `reference_audio` or `emotion_audio`) → 413
 - [ ] Regression: `TTS_ENGINE=qwen3` — all existing CLI + API calls unchanged
 - [ ] Offline load: `HF_HUB_OFFLINE=1` + local `TTS_INDEXTTS2_MODEL_DIR`
 - [ ] RTX 4070 12 GB benchmark (the go/no-go gate):
