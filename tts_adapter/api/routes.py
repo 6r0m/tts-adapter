@@ -147,7 +147,7 @@ def _try_restore(engine: TTSEngine) -> str:
         return "previous engine restored"
     except Exception as restore_err:
         log.warning("failed to restore engine %s: %s", engine.engine_name, restore_err)
-        return f"restore attempt failed ({restore_err}); next request will lazy-reload"
+        return f"restore attempt failed ({restore_err}); next generation request may lazy-reload"
 
 
 def _switch_response(engine: TTSEngine, message: str) -> SwitchModelResponse:
@@ -235,7 +235,7 @@ def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
     # in synthesize(), but proactive warm is better operator UX).
     try:
         target_engine.warmup()
-    except (RuntimeError, Exception) as e:
+    except Exception as e:
         is_runtime = isinstance(e, RuntimeError)
         log.warning("target warmup failed; rolling back _engine to %s", current.engine_name)
         _engine = current

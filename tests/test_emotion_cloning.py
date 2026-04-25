@@ -381,6 +381,7 @@ class TestCrossEngineSwitchRollback:
         assert "rolled back" in exc.value.detail.lower()
         assert "restore attempt failed" in exc.value.detail.lower()
         assert "lazy-reload" in exc.value.detail.lower()
+        assert "generation request" in exc.value.detail.lower()
         # _engine must still be the previous reference even when restore fails.
         assert routes._engine is fake_current
 
