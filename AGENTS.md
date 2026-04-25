@@ -49,28 +49,33 @@ All engines must implement `TTSEngine` protocol:
 
 ```
 tts-adapter/
-├── tts_adapter/
-│   ├── __init__.py
-│   ├── api/                 # FastAPI routes
-│   │   ├── __init__.py
-│   │   └── routes.py
-│   ├── engines/             # TTS engines
-│   │   ├── __init__.py      # Engine factory
-│   │   └── qwen3.py         # Qwen3-TTS implementation
-│   ├── cli.py               # CLI entry point
-│   ├── config.py            # Global settings
-│   ├── contract.py          # Request/response models
-│   └── engine.py            # TTSEngine protocol
-├── scripts/
-│   └── tts_batch.py         # Batch CLI tool
-├── docs/                    # Documentation
-├── data/                    # Local data (git-ignored)
-│   └── cache/               # HuggingFace model cache
-├── Dockerfile               # Multi-stage GPU build
-├── compose.yml              # Docker Compose
-├── Makefile                 # Build/test automation
-├── pyproject.toml           # uv config
-└── uv.lock                  # Locked dependencies
+  tts_adapter/
+    __init__.py
+    api/                    # FastAPI routes
+      __init__.py
+      routes.py
+    engines/                # TTS engines
+      __init__.py           # Engine factory
+      qwen3.py              # Qwen3-TTS implementation
+      indextts2.py          # IndexTTS2 (WIP - to be rewritten as remote client)
+    audio_utils.py          # trim_silence, bytes_to_tempfile (engine-agnostic)
+    gpu_utils.py            # unload_gpu_model
+    cli.py                  # CLI entry point
+    config.py               # Global settings
+    contract.py             # Request/response models
+    engine.py               # TTSEngine protocol
+    web/                    # HTML web UI templates
+  scripts/
+    qwen3/                  # Qwen3 CLI scripts (tts.py, tts_clone.py, ...)
+    indextts2/              # IndexTTS2 CLI scripts and (planned) serve.py worker
+  docs/                     # Documentation
+  models/                   # Model weights (git-ignored, planned)
+  vendor/                   # Cloned upstream repos like index-tts (git-ignored, planned)
+  Dockerfile                # Multi-stage GPU build
+  compose.yml               # Docker Compose
+  Makefile                  # Build/test automation
+  pyproject.toml            # uv config
+  uv.lock                   # Locked dependencies
 ```
 
 ---
@@ -148,13 +153,10 @@ curl -X POST http://localhost:9880/tts/batch \
 | `TTS_QWEN3_MODEL_ID` | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | Model |
 | `TTS_QWEN3_DEVICE` | `cuda:0` | CUDA device |
 | `TTS_QWEN3_DTYPE` | `bfloat16` | Data type |
-| `TTS_INDEXTTS2_MODEL_DIR` | `~/.cache/tts-adapter/models/IndexTTS-2` | Local checkpoint dir |
-| `TTS_INDEXTTS2_REPO_DIR` | - | Path to cloned `index-tts` repo (added to sys.path) |
-| `TTS_INDEXTTS2_USE_FP16` | `true` | FP16 inference |
-| `TTS_INDEXTTS2_USE_CUDA_KERNEL` | `false` | Optional CUDA kernel speed path |
-| `TTS_INDEXTTS2_USE_DEEPSPEED` | `false` | Optional DeepSpeed inference |
-| `TTS_INDEXTTS2_USE_RANDOM` | `false` | Random sampling (reduces clone fidelity) |
-| `TTS_INDEXTTS2_TRIM_SILENCE` | `false` | Trim leading/trailing silence (preserves emotional pauses by default) |
+| `TTS_INDEXTTS2_URL` | `http://localhost:9881` | URL of the IndexTTS2 worker process (separate venv) |
+| `TTS_INDEXTTS2_TIMEOUT` | `180` | HTTP timeout (seconds) for forwarded `/tts/clone` requests |
+
+**Worker-side env** (`USE_FP16`, `MODEL_DIR`, `USE_CUDA_KERNEL`, `USE_DEEPSPEED`, `USE_RANDOM`, `TRIM_SILENCE`, `PORT`) is documented in [docs/engines/indextts2/README.md](docs/engines/indextts2/README.md) - those vars belong to the worker process, not the main adapter.
 
 ---
 

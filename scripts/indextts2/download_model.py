@@ -5,7 +5,7 @@ Usage:
     uv run python scripts/indextts2/download_model.py
     uv run python scripts/indextts2/download_model.py --dir /custom/path
 
-Mirrors scripts/qwen3/download_model.py — same destination convention
+Mirrors scripts/qwen3/download_model.py - same destination convention
 (~/.cache/tts-adapter/models/<name>/) so .env paths stay symmetric.
 After download, set TTS_INDEXTTS2_MODEL_DIR in .env to the printed path.
 """

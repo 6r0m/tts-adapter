@@ -94,14 +94,20 @@ else
 	PYTHONPATH=. uv run python scripts/qwen3/tts_clone.py "$(text)" --ref "$(ref)"
 endif
 
-# Voice cloning + emotion (requires TTS_ENGINE=indextts2)
+# Voice cloning + emotion (requires TTS_ENGINE=indextts2 and a running worker).
 # Pick exactly one emotion mode: emotion-text=, emotion-audio=, or emotion-vector=
+# Worker URL falls back to the same default the engine uses; override with
+#   make tts-clone-emotion TTS_INDEXTTS2_URL=http://other:9881 ...
+TTS_INDEXTTS2_URL ?= http://localhost:9881
+
 tts-clone-emotion:
 ifndef text
 	@echo "Usage: make tts-clone-emotion text=\"...\" ref=sample.wav emotion-text=\"angry\" [alpha=0.7]"
 else ifndef ref
 	@echo "Usage: make tts-clone-emotion text=\"...\" ref=sample.wav emotion-text=\"angry\" [alpha=0.7]"
 else
+	@curl -fsS "$(TTS_INDEXTTS2_URL)/health" >/dev/null 2>&1 || \
+	    (echo "IndexTTS2 worker not running at $(TTS_INDEXTTS2_URL). Start it first: make run-indextts2"; exit 1)
 	@PYTHONPATH=. uv run python scripts/indextts2/tts_clone_emotion.py "$(text)" \
 	    --ref "$(ref)" \
 	    $(if $(emotion-text),--emotion-text "$(emotion-text)") \

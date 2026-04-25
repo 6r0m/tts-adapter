@@ -28,7 +28,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from tts_adapter.engines import create_engine  # noqa: E402
-from tts_adapter.engines.indextts2 import IndexTTS2Engine  # noqa: E402
 
 
 def _parse_vector(raw: str) -> list[float]:
@@ -71,10 +70,13 @@ def main() -> int:
         return 1
 
     engine = create_engine()
-    if not isinstance(engine, IndexTTS2Engine):
+    # Capability check via the protocol - works for both the in-process engine
+    # (current) and the IndexTTS2RemoteEngine (planned in Phase A.1) without
+    # importing or isinstance-coupling to either concrete class.
+    if engine.engine_name != "indextts2" or not engine.supports_emotional_cloning:
         print(
-            f"Error: expected IndexTTS2 engine, got {engine.engine_name}. "
-            "Set TTS_ENGINE=indextts2 in .env.",
+            "Error: this script requires TTS_ENGINE=indextts2. "
+            "Also start the IndexTTS2 worker once Phase A.1 lands: make run-indextts2",
             file=sys.stderr,
         )
         return 1
@@ -88,7 +90,7 @@ def main() -> int:
     elif args.emotion_vector:
         print(f"Emo:  vector={args.emotion_vector}, alpha={args.alpha}")
     else:
-        print("Emo:  (none — plain clone)")
+        print("Emo:  (none - plain clone)")
 
     print("Loading model...")
     engine.warmup()

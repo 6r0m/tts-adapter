@@ -54,7 +54,7 @@ See [Qwen3 Engine docs](docs/engines/qwen3/README.md#offline-mode) for details.
 
 ## Web UI
 
-Open **http://localhost:9880** — three modes (Simple, Voice Design, Voice Clone), RU/EN switch, advanced generation settings. See [Web UI docs](docs/web-ui.md).
+Open **http://localhost:9880** - three modes (Simple, Voice Design, Voice Clone), RU/EN switch, advanced generation settings. See [Web UI docs](docs/web-ui.md).
 
 For API access, see [API Reference](docs/api-reference.md). Swagger docs available at `/docs`.
 
@@ -91,7 +91,7 @@ make shell    # Shell into container
 ```
 
 `compose.yml` sets `pull_policy: missing`, so `make up` never rebuilds or pulls
-when the image exists locally — safe to use offline after a one-time `make build`.
+when the image exists locally - safe to use offline after a one-time `make build`.
 Rebuild only when `uv.lock`, `pyproject.toml`, or the `Dockerfile` changes.
 
 See [Makefile](Makefile) for all targets.
@@ -162,12 +162,10 @@ curl http://localhost:9880/health
 
 | Engine | Status | Description |
 |--------|--------|-------------|
-| [Qwen3-TTS](docs/engines/qwen3/README.md) | ✅ Ready | 1.7B/0.6B with voice cloning, preset speakers, instructions |
-| [IndexTTS2](docs/engines/indextts2/README.md) | ✅ Ready | Voice cloning **with disentangled emotion control** (audio / text / 8-dim vector) |
+| [Qwen3-TTS](docs/engines/qwen3/README.md) | Ready | 1.7B/0.6B with voice cloning, preset speakers, instructions |
+| [IndexTTS2](docs/engines/indextts2/README.md) | WIP (isolated worker design) | Emotional voice cloning - runs as a separate process due to upstream dep pins (see [todo/engine_install_and_switch.md](todo/engine_install_and_switch.md)) |
 
-**Engine choice:**
-- `qwen3` (default) — multilingual / Russian / general cloning, preset speakers, `instruct` style.
-- `indextts2` — when you need to clone a specific voice **and** apply emotions (Qwen3 cannot do both at once).
+**Promotion criterion for IndexTTS2 -> Ready:** `make install-indextts2 && make run-indextts2 && make serve` followed by a `/tts/clone` request with `emotion_text` returns `200 audio/wav`.
 
 ### Adding New Engines
 
