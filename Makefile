@@ -1,4 +1,4 @@
-.PHONY: help install install-indextts2 install-indextts download-model download-indextts2 run-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build build-indextts2 build-all rebuild up down logs health shell clean
+.PHONY: help install install-qwen3 install-indextts2 install-indextts download-model download-indextts2 run-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build build-indextts2 build-all rebuild up down logs health shell clean indextts2 all
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -9,8 +9,9 @@ help:
 	@echo "==========="
 	@echo ""
 	@echo "Local (no Docker):"
-	@echo "  make install         - Install deps (uv sync)"
-	@echo "  make download-model  - Download model for offline use"
+	@echo "  make install         - Install Python deps (uv sync)"
+	@echo "  make install-qwen3   - Full Qwen3 install (deps + checkpoints, prints .env hint)"
+	@echo "  make download-model  - Download Qwen3 weights only (skip uv sync)"
 	@echo "  make serve           - Run server locally (Ctrl+C to stop)"
 	@echo "  make server stop     - Kill local server"
 	@echo "  make tts text=\"...\" [instruct=\"...\"] - Generate speech"
@@ -46,9 +47,23 @@ install:
 	@echo ""
 	@echo "Done! Now run: source .venv/bin/activate"
 
-# Download model for offline use
+# Download model for offline use (Qwen3)
 download-model:
 	uv run python scripts/qwen3/download_model.py
+
+# Full Qwen3 install: deps + checkpoints. Symmetric to install-indextts2.
+# Prints the .env lines to paste at the end.
+install-qwen3: install
+	uv run python scripts/qwen3/download_model.py
+	@echo ""
+	@echo "============================================================"
+	@echo "Qwen3 install complete. Add to .env:"
+	@echo "  TTS_ENGINE=qwen3"
+	@echo "  TTS_QWEN3_MODEL_PATH=./models/qwen3/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+	@echo "  HF_HUB_OFFLINE=1"
+	@echo ""
+	@echo "Then: make serve   (or 'make up' for Docker)"
+	@echo "============================================================"
 
 # Download IndexTTS-2 checkpoints only (use this to refresh weights without
 # re-cloning vendor/index-tts or reinstalling the worker venv).
@@ -56,26 +71,39 @@ download-indextts2:
 	uv run python scripts/indextts2/download_model.py
 
 # Full IndexTTS2 install: clone upstream, set up isolated venv, install worker
-# deps, download checkpoints. Idempotent - safe to re-run.
+# deps, download checkpoints, prewarm w2v-bert. Idempotent - safe to re-run.
 # Why two processes: see docs/engines/indextts2/README.md.
+#
+# Pin a specific upstream ref for reproducible installs:
+#   make install-indextts2 INDEXTTS_REF=v0.1.0
+# Defaults to `main` for exploration; pin before relying on it.
+INDEXTTS_REF ?= main
+
 install-indextts2:
-	@echo "==> [1/4] vendor/index-tts (idempotent clone)..."
+	@echo "==> [1/5] vendor/index-tts (idempotent clone, ref=$(INDEXTTS_REF))..."
 	@if [ ! -d vendor/index-tts ]; then \
 	    git clone https://github.com/index-tts/index-tts vendor/index-tts; \
 	else \
-	    echo "vendor/index-tts already exists - skipping clone"; \
+	    echo "vendor/index-tts already exists - fetching latest refs"; \
+	    cd vendor/index-tts && git fetch --all --tags; \
 	fi
+	cd vendor/index-tts && git checkout $(INDEXTTS_REF)
 	@echo ""
-	@echo "==> [2/4] isolated venv via upstream's official uv flow..."
+	@echo "==> [2/5] isolated venv via upstream's official uv flow..."
 	# env -u VIRTUAL_ENV: prevents the parent shell's activated venv from
 	# leaking in (uv pip install would otherwise install into the WRONG venv).
 	cd vendor/index-tts && env -u VIRTUAL_ENV uv sync
 	@echo ""
-	@echo "==> [3/4] worker deps (fastapi/uvicorn/multipart/soundfile/dotenv)..."
+	@echo "==> [3/5] worker deps (fastapi/uvicorn/multipart/soundfile/dotenv)..."
 	cd vendor/index-tts && env -u VIRTUAL_ENV uv pip install fastapi uvicorn 'python-multipart' soundfile python-dotenv
 	@echo ""
-	@echo "==> [4/4] IndexTTS-2 checkpoints (~6 GB, idempotent resume)..."
+	@echo "==> [4/5] IndexTTS-2 checkpoints (~6 GB, idempotent resume)..."
 	uv run python scripts/indextts2/download_model.py
+	@echo ""
+	@echo "==> [5/5] prewarm facebook/w2v-bert-2.0 into HF cache (~2 GB)..."
+	@echo "    (fetched by IndexTTS2 on first /load - prewarming makes HF_HUB_OFFLINE=1 honest)"
+	cd vendor/index-tts && env -u VIRTUAL_ENV uv run python -c \
+	    "from transformers import AutoModel; AutoModel.from_pretrained('facebook/w2v-bert-2.0')"
 	@echo ""
 	@echo "============================================================"
 	@echo "IndexTTS2 install complete. Add to .env:"
@@ -265,7 +293,9 @@ logs:
 	    $(DOCKER_COMPOSE) --profile gpu logs -f adapter-tts; \
 	fi
 
-all:
+# No-op stubs for the positional args used by `make logs [indextts2|all]` and
+# `make test [batch]` so Make doesn't try to build them as real targets.
+all indextts2:
 	@:
 
 health:

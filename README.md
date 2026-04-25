@@ -44,9 +44,11 @@ make serve
 Download model while online, then run without network:
 
 ```bash
-make download-model     # Downloads to ~/.cache/tts-adapter/models/
-# Add to .env:
-# TTS_QWEN3_MODEL_PATH=~/.cache/tts-adapter/models/Qwen3-TTS-12Hz-1.7B-CustomVoice
+make install-qwen3      # Full install: deps + weights -> ./models/qwen3/<name>/
+# (Or: make download-model to refresh just the weights)
+
+# Add to .env (download script prints these):
+# TTS_QWEN3_MODEL_PATH=./models/qwen3/Qwen3-TTS-12Hz-1.7B-CustomVoice
 # HF_HUB_OFFLINE=1
 ```
 

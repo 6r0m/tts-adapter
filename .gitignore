@@ -219,3 +219,20 @@ models/
 
 # Cloned upstream repos (vendor/index-tts/ for IndexTTS2 worker venv, Phase B)
 vendor/
+
+# User-global config that NEVER belongs in a project repo. Sandboxes /
+# editors / templates sometimes drop 0-byte stubs of these into the repo
+# root - this guard keeps them out of git regardless.
+# Project-level files (.mcp.json, .gitmodules, .idea, .vscode,
+# .claude/{settings.json,agents,commands,skills}) are NOT ignored - if you
+# populate them with real content they should be committed normally.
+.bash_profile
+.bashrc
+.zprofile
+.zshrc
+.profile
+.gitconfig
+.ripgreprc
+
+# .claude/settings.local.json is per-user/per-machine - never commit
+.claude/settings.local.json

@@ -82,6 +82,8 @@ RUN useradd -m -u ${UID} -s /bin/bash ${USER} \
 # Runtime stage: copy worker script + cross-venv-safe helper modules
 FROM user_setup AS runtime
 
+# ARGs are stage-scoped in Dockerfiles - must redeclare here for USER directive.
+ARG USER=app
 ARG UID=10001
 
 # Worker script and the two adapter helper modules it imports via sys.path
