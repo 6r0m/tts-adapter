@@ -372,6 +372,14 @@ class Qwen3Engine:
         """
         return False
 
+    def catalog_models(self) -> list[ModelInfo]:
+        """Static list of all Qwen3 variants we know about.
+
+        For Qwen3 this equals available_models() - the engine is in-process
+        so there's no separate "is the backend reachable" question.
+        """
+        return _AVAILABLE_MODELS
+
     def available_models(self) -> list[ModelInfo]:
         """Models this engine can switch between via /model/switch."""
         return _AVAILABLE_MODELS

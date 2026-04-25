@@ -111,14 +111,29 @@ def health() -> HealthResponse:
     )
 
 
-def _models_index() -> dict[str, str]:
-    """Map model_id -> engine_name across ALL registered engines.
+def _catalog_index() -> dict[str, str]:
+    """Map model_id -> engine_name across ALL registered engines, using each
+    engine's STATIC catalog (catalog_models()).
 
-    Engines whose backend isn't available right now (e.g. IndexTTS2 worker
-    is down) return [] from available_models(), so they're naturally
-    excluded from the index without route-level engine-name branching.
+    Includes models whose backend is currently unreachable - that's what
+    lets /model/switch route to a known engine and surface 503 from
+    warmup() rather than rejecting as 400.
     """
-    return {m.id: name for name, cls in _ENGINES.items() for m in cls().available_models()}
+    return {m.id: name for name, cls in _ENGINES.items() for m in cls().catalog_models()}
+
+
+def _unload_engine(engine: TTSEngine) -> None:
+    """Best-effort unload of either remote (worker /unload) or in-process (gpu_utils) engine."""
+    try:
+        unload_method = getattr(engine, "unload", None)
+        if callable(unload_method):
+            unload_method()
+        elif hasattr(engine, "_model") and getattr(engine, "_model") is not None:
+            model_ref = engine._model
+            engine._model = None
+            unload_gpu_model(model_ref)
+    except Exception as e:
+        log.warning("unload of engine %s failed (continuing): %s", engine.engine_name, e)
 
 
 def _switch_response(engine: TTSEngine, message: str) -> SwitchModelResponse:
@@ -150,23 +165,29 @@ def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
     """Switch to a different model.
 
     Same "unload current, load new" pattern as the previous Qwen3-only
-    variant switch, just extended to work across engines:
+    variant switch, extended across engines:
 
     - Same engine + different model -> existing engine.reload(new_id) path.
     - Different engine -> unload current (in-process gpu_utils for Qwen3,
-      worker /unload for IndexTTS2RemoteEngine), then construct + warmup
-      the target engine.
+      worker /unload for remote), then construct + warmup the target.
+
+    Validation uses the STATIC catalog (catalog_models()) so we can route
+    to engines whose backend is temporarily down and let warmup() surface
+    503 with an actionable hint, rather than rejecting as 400.
+
+    Cross-engine swap is atomic: if the target's warmup fails, _engine is
+    rolled back to the previous engine reference (which has been unloaded -
+    a subsequent request will trigger lazy reload via warmup).
 
     Server is briefly unavailable during reload (~30-120 s).
-    Cross-engine switch to indextts2 returns 503 if the worker is down.
     """
     global _engine
 
-    idx = _models_index()
+    idx = _catalog_index()
     if req.model_id not in idx:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown model ID. Available now: {', '.join(sorted(idx))}",
+            detail=f"Unknown model ID. Known: {', '.join(sorted(idx))}",
         )
     target_engine_name = idx[req.model_id]
     current = get_engine()
@@ -183,32 +204,40 @@ def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
             raise HTTPException(status_code=500, detail=f"Failed to switch model: {e}")
         return _switch_response(current, f"Switched to {req.model_id}")
 
-    # Cross-engine swap.
-    # Step 1: unload current. Strict VRAM rule - only ONE model loaded at a time.
+    # Cross-engine swap. Two-phase to keep _engine consistent on failure.
+    # Step 1: build the target engine (cheap - no model load happens in __init__).
     try:
-        unload_method = getattr(current, "unload", None)
-        if callable(unload_method):
-            # Remote engines (IndexTTS2RemoteEngine) hand off to the worker.
-            unload_method()
-        elif hasattr(current, "_model") and getattr(current, "_model") is not None:
-            # In-process engines (Qwen3) release VRAM directly.
-            model_ref = current._model
-            current._model = None
-            unload_gpu_model(model_ref)
+        target_engine = _ENGINES[target_engine_name]()
     except Exception as e:
-        log.warning("unload of current engine %s failed (continuing): %s", current.engine_name, e)
+        raise HTTPException(status_code=500, detail=f"Failed to construct {target_engine_name}: {e}")
 
-    # Step 2: load new. For remote engine, warmup() does /health + /load.
+    # Step 2: unload current. Strict VRAM rule - only ONE model loaded at a time.
+    _unload_engine(current)
+
+    # Step 3: warmup target. If this fails, rollback _engine to the previous
+    # reference so the global doesn't point at a broken target. The previous
+    # engine has been unloaded; the next request will lazy-reload it.
+    try:
+        target_engine.warmup()
+    except RuntimeError as e:
+        log.warning("target warmup failed; rolling back _engine to %s", current.engine_name)
+        _engine = current
+        raise HTTPException(
+            status_code=503,
+            detail=f"{e} (current engine '{current.engine_name}' was unloaded; the next request will reload it)",
+        )
+    except Exception as e:
+        log.warning("target warmup failed; rolling back _engine to %s", current.engine_name)
+        _engine = current
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load {target_engine_name}: {e} (rolled back to '{current.engine_name}')",
+        )
+
+    # Step 4: success - commit globals.
     os.environ["TTS_ENGINE"] = target_engine_name
     get_settings.cache_clear()
-    try:
-        _engine = _ENGINES[target_engine_name]()
-        _engine.warmup()
-    except RuntimeError as e:
-        # IndexTTS2RemoteEngine raises this when the worker is unreachable.
-        raise HTTPException(status_code=503, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load {target_engine_name}: {e}")
+    _engine = target_engine
 
     return _switch_response(_engine, f"Switched to {target_engine_name}: {req.model_id}")
 

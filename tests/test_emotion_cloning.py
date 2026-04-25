@@ -253,6 +253,89 @@ class TestRemoteEngineForwarding:
         assert models[0].id == "IndexTeam/IndexTTS-2"
         assert models[0].supports_emotional_cloning is True
 
+    def test_catalog_models_independent_of_health(self):
+        """catalog_models() must return the IndexTTS-2 entry even when the
+        worker is dead. That's what lets /model/switch route the request
+        and surface 503 from warmup() instead of 400 unknown.
+        """
+        e = IndexTTS2RemoteEngine()
+        mock_client = MagicMock()
+        mock_client.get.side_effect = httpx.ConnectError("worker dead")
+        e._client = mock_client
+
+        # available is empty (worker unreachable)...
+        assert e.available_models() == []
+        # ...but catalog still has the entry (so switch can route to it)
+        catalog = e.catalog_models()
+        assert len(catalog) == 1
+        assert catalog[0].id == "IndexTeam/IndexTTS-2"
+
+
+class TestQwen3CatalogParity:
+    def test_qwen3_catalog_equals_available(self):
+        """Qwen3 is in-process - no separate availability concern, so the
+        two methods return the same list."""
+        from tts_adapter.engines.qwen3 import Qwen3Engine
+
+        e = Qwen3Engine()
+        catalog = e.catalog_models()
+        available = e.available_models()
+        assert [m.id for m in catalog] == [m.id for m in available]
+        assert len(catalog) == 4
+
+
+class TestRoutesIndex:
+    """_catalog_index must include IndexTTS2 even when the worker is down,
+    so /model/switch can route to it for the 503 path.
+    """
+
+    def test_catalog_index_includes_indextts2_when_worker_down(self, monkeypatch):
+        # Force IndexTTS2RemoteEngine.available_models() to return [] (worker
+        # unhealthy). catalog_models() should still expose the entry, and
+        # _catalog_index() should pick it up.
+        from tts_adapter.api import routes
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+
+        monkeypatch.setattr(IndexTTS2RemoteEngine, "available_models", lambda self: [])
+
+        idx = routes._catalog_index()
+        assert "IndexTeam/IndexTTS-2" in idx
+        assert idx["IndexTeam/IndexTTS-2"] == "indextts2"
+
+
+class TestCrossEngineSwitchRollback:
+    """Failed warmup on a cross-engine swap must roll back _engine."""
+
+    def test_failed_switch_rolls_back_engine(self, monkeypatch):
+        from tts_adapter.api import routes
+        from tts_adapter.contract import SwitchModelRequest
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+        from tts_adapter.engines.qwen3 import Qwen3Engine
+
+        # Pretend Qwen3 is the current engine, and we don't actually warm it.
+        fake_current = Qwen3Engine()
+        # Don't let _unload_engine try to release fake_current's GPU memory.
+        fake_current._model = None
+        monkeypatch.setattr(routes, "_engine", fake_current)
+
+        # Patch IndexTTS2RemoteEngine.warmup to always raise (worker dead).
+        def _boom(self):
+            raise RuntimeError("IndexTTS2 worker not reachable at http://localhost:9881. "
+                               "Start it with: make run-indextts2")
+
+        monkeypatch.setattr(IndexTTS2RemoteEngine, "warmup", _boom)
+
+        # The switch must return 503 AND restore _engine to fake_current.
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc:
+            routes.switch_model(SwitchModelRequest(model_id="IndexTeam/IndexTTS-2"))
+        assert exc.value.status_code == 503
+        assert "not reachable" in exc.value.detail
+        assert "rolled back" in exc.value.detail.lower() or "unloaded" in exc.value.detail.lower()
+        # Critical: _engine must be back to the previous reference, not the broken target.
+        assert routes._engine is fake_current
+
 
 # ---------- Integration tests (need a live main adapter) ----------
 

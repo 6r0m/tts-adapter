@@ -19,10 +19,11 @@ def live_client():
 
     Skips the test (not errors) when the server isn't reachable. Uses
     trust_env=False to avoid the SOCKS proxy trap on dev machines.
+    Uses a context manager so the client is closed even if a test fails.
     """
-    client = httpx.Client(base_url=BASE_URL, timeout=30.0, trust_env=False)
-    try:
-        client.get("/health")
-    except httpx.ConnectError:
-        pytest.skip(f"Live server not running at {BASE_URL}")
-    return client
+    with httpx.Client(base_url=BASE_URL, timeout=30.0, trust_env=False) as client:
+        try:
+            client.get("/health")
+        except httpx.ConnectError:
+            pytest.skip(f"Live server not running at {BASE_URL}")
+        yield client

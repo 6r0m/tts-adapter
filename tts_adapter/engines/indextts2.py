@@ -239,6 +239,15 @@ class IndexTTS2RemoteEngine:
     def supports_emotional_cloning(self) -> bool:
         return True
 
+    def catalog_models(self) -> list[ModelInfo]:
+        """Static IndexTTS-2 entry - always returned, regardless of worker health.
+
+        Lets /model/switch route to indextts2 even when the worker is down,
+        so warmup() can fail with 503 + actionable hint (rather than the
+        request being rejected as 400 unknown model).
+        """
+        return [_MODEL_INFO]
+
     def available_models(self) -> list[ModelInfo]:
         """Return the single IndexTTS-2 entry, but only if the worker is reachable.
 

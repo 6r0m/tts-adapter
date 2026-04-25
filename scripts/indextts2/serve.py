@@ -16,7 +16,8 @@ Required deps in the vendor venv (install once):
     # indextts itself + torch + transformers + ... come from `uv sync` in vendor/index-tts/
 
 Worker-side env vars (TTS_INDEXTTS2_*):
-    MODEL_DIR         Local checkpoint directory (default: ~/.cache/tts-adapter/models/IndexTTS-2)
+    MODEL_DIR         Local checkpoint directory (default: ./models/indextts2/IndexTTS-2 - repo-local)
+                      Legacy ~/.cache/tts-adapter/models/IndexTTS-2/ still works if set explicitly.
     CFG_PATH          Path to config.yaml (default: {MODEL_DIR}/config.yaml)
     USE_FP16          true|false (default true)
     USE_CUDA_KERNEL   true|false (default false)
@@ -66,7 +67,8 @@ def _env_str(name: str, default: str) -> str:
     return os.environ.get(name, default)
 
 
-_DEFAULT_MODEL_DIR = str(Path.home() / ".cache" / "tts-adapter" / "models" / "IndexTTS-2")
+_REPO_ROOT_FOR_MODELS = Path(__file__).resolve().parent.parent.parent
+_DEFAULT_MODEL_DIR = str(_REPO_ROOT_FOR_MODELS / "models" / "indextts2" / "IndexTTS-2")
 MODEL_DIR = _env_str("TTS_INDEXTTS2_MODEL_DIR", _DEFAULT_MODEL_DIR)
 CFG_PATH = _env_str("TTS_INDEXTTS2_CFG_PATH", str(Path(MODEL_DIR) / "config.yaml"))
 USE_FP16 = _env_bool("TTS_INDEXTTS2_USE_FP16", True)
@@ -75,6 +77,11 @@ USE_DEEPSPEED = _env_bool("TTS_INDEXTTS2_USE_DEEPSPEED", False)
 USE_RANDOM = _env_bool("TTS_INDEXTTS2_USE_RANDOM", False)
 TRIM_SILENCE = _env_bool("TTS_INDEXTTS2_TRIM_SILENCE", False)
 PORT = int(os.environ.get("TTS_INDEXTTS2_PORT", "9881"))
+
+# Symmetric with the main adapter's /tts/clone cap (20 MB per upload).
+# Worker is exposed on its own port so it must enforce this independently -
+# someone could call :9881 directly and bypass the main adapter's check.
+_MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 _model = None
 _lock = threading.Lock()  # serializes load/unload/inference
@@ -132,6 +139,20 @@ def _parse_emotion_vector(raw: str) -> list[float] | None:
     return vec
 
 
+def _validate_upload_size(upload: UploadFile | None, field: str) -> None:
+    """Reject uploads larger than _MAX_UPLOAD_BYTES (DoS protection).
+
+    Mirrors tts_adapter/api/routes.py: _validate_upload_size. The worker
+    enforces this independently because it's exposed on its own port.
+    """
+    if upload is None or upload.size is None:
+        return
+    if upload.size > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            413, f"{field} exceeds {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit"
+        )
+
+
 app = FastAPI(title="IndexTTS2 Worker", version="0.1.0")
 
 
@@ -181,6 +202,9 @@ async def tts_clone(
     repetition_penalty: float | None = Form(default=None),
     max_new_tokens: int | None = Form(default=None),
 ):
+    _validate_upload_size(reference_audio, "reference_audio")
+    _validate_upload_size(emotion_audio, "emotion_audio")
+
     if not 0.0 <= emotion_alpha <= 1.0:
         raise HTTPException(400, "emotion_alpha must be between 0.0 and 1.0")
 
@@ -191,15 +215,6 @@ async def tts_clone(
         )
 
     vec = _parse_emotion_vector(emotion_vector)
-
-    # Lazy load on first /tts/clone if /load wasn't called explicitly.
-    if _model is None:
-        with _lock:
-            try:
-                _load_model()
-            except Exception as e:
-                log.exception("lazy load failed")
-                raise HTTPException(500, f"lazy load failed: {e}")
 
     ref_bytes = await reference_audio.read()
     emo_bytes = await emotion_audio.read() if emotion_audio is not None else None
@@ -225,8 +240,15 @@ async def tts_clone(
         os.close(out_fd)
         stack.callback(_silent_unlink, out_path)
 
+        # Single critical section: lazy-load (idempotent) + infer under one
+        # lock acquisition. Closes the race where /unload could nuke _model
+        # between the previous lazy-load lock release and the infer lock.
         with _lock:
             try:
+                _load_model()
+                if _model is None:
+                    # _load_model raises on failure, but defensively re-check.
+                    raise HTTPException(500, "model failed to load")
                 _model.infer(
                     spk_audio_prompt=spk_path,
                     text=text,
@@ -239,6 +261,8 @@ async def tts_clone(
                     use_random=USE_RANDOM,
                     **gen_kwargs,
                 )
+            except HTTPException:
+                raise
             except Exception as e:
                 log.exception("infer failed")
                 raise HTTPException(500, f"infer failed: {e}")

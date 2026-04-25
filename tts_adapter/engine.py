@@ -100,11 +100,26 @@ class TTSEngine(Protocol):
         """
         ...
 
-    def available_models(self) -> list[ModelInfo]:
-        """Return models this engine can switch between.
+    def catalog_models(self) -> list[ModelInfo]:
+        """Static, ALWAYS-returned list of models this engine knows about.
 
-        Engines own their own metadata so routes don't branch on engine_name.
-        Single-model engines (e.g. IndexTTS2) return a one-entry list.
+        Used by /model/switch to validate the requested ID. Returning a known
+        model here even when its backend is currently down is what allows the
+        switch endpoint to attempt warmup() and surface a 503 with an
+        actionable hint, rather than rejecting the request as 400 unknown.
+
+        For in-process engines (Qwen3) this equals available_models().
+        For remote engines (IndexTTS2RemoteEngine) this returns the static
+        entry regardless of worker health.
+        """
+        ...
+
+    def available_models(self) -> list[ModelInfo]:
+        """Models this engine can switch to RIGHT NOW.
+
+        Used by /models so the UI dropdown only offers reachable choices.
+        Engines whose backend is unreachable return [] - they get filtered
+        out of /models without route-level engine-name branching.
         """
         ...
 

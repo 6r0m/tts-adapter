@@ -47,13 +47,17 @@ download-model:
 download-indextts2:
 	uv run python scripts/indextts2/download_model.py
 
-# IndexTTS2 worker process - lands in Phase A.1/B (scripts/indextts2/serve.py).
-# Stub fails loudly so users hitting the health gate above don't get a misleading "command not found".
+# IndexTTS2 worker process. The worker script (scripts/indextts2/serve.py) exists,
+# but it must run inside vendor/index-tts/.venv (which has the indextts package).
+# That vendor venv is set up by `make install-indextts2`, which lands in Phase B.
 run-indextts2:
-	@echo "run-indextts2 is not implemented yet."
-	@echo "It lands in Phase A.1 (worker scripts/indextts2/serve.py) + Phase B (vendor/index-tts uv env)."
-	@echo "Track progress: todo/engine_install_and_switch.md"
-	@exit 1
+	@if [ ! -d vendor/index-tts ]; then \
+	    echo "vendor/index-tts not found."; \
+	    echo "Worker script scripts/indextts2/serve.py exists, but it needs the indextts package"; \
+	    echo "from vendor/index-tts/.venv. Run 'make install-indextts2' (Phase B) to set that up."; \
+	    exit 1; \
+	fi
+	cd vendor/index-tts && uv run python ../../scripts/indextts2/serve.py
 
 # === LOCAL SERVER ===
 serve:
