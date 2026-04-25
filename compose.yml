@@ -1,55 +1,83 @@
 # TTS Adapter - Local Development
 # Usage:
-#   GPU: docker compose --profile gpu up --build
+#   Qwen3 only: docker compose --profile gpu up --build
+#   Qwen3 + IndexTTS2: docker compose --profile gpu --profile indextts2 up --build
+#   Easiest: `make up` (auto-detects which engines are installed)
 #
 # Note: TTS requires GPU (qwen-tts needs CUDA)
 
 name: tts
 
-# Shared network for cross-container communication
 networks:
   render-network:
     name: render-network
     driver: bridge
 
-# Common configuration (shared via YAML anchor)
-x-common: &common
-  restart: unless-stopped
-  ports:
-    - "${TTS_PORT:-9880}:9880"
+# GPU reservation block (shared via YAML anchor)
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+# Shared volume + env mounts (HF cache + repo-local models + .env)
+x-shared-mounts: &shared-mounts
   volumes:
-    # HuggingFace cache for model weights (use host's standard cache)
     - ${HF_CACHE_PATH:-~/.cache/huggingface}:/home/app/.cache/huggingface
-    # Repo-local model weights (downloaded by `make install-{qwen3,indextts2}`).
-    # Same convention as A1111/ComfyUI/llama.cpp - gitignored, easy to nuke.
     - ./models:/work/models
   env_file:
     - .env
-  healthcheck:
-    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9880/health', timeout=10)"]
-    interval: 30s
-    timeout: 10s
-    start_period: 120s
-    retries: 3
 
 services:
-  # GPU service (required for TTS)
+  # Main TTS adapter (Qwen3 in-process + HTTP forwarder for IndexTTS2RemoteEngine)
   adapter-tts:
-    <<: *common
+    <<: [*gpu, *shared-mounts]
     container_name: adapter-tts
     profiles: ["gpu"]
+    restart: unless-stopped
     pull_policy: missing
     image: ${CI_REGISTRY_IMAGE:-tts}/adapter-tts:${CI_COMMIT_REF_SLUG:-latest}-${CI_PIPELINE_ID:-local}
+    ports:
+      - "${TTS_PORT:-9880}:9880"
     networks:
       - default
       - render-network
     build:
       context: .
       dockerfile: Dockerfile
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9880/health', timeout=10)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+
+  # IndexTTS2 worker (separate venv, isolated deps).
+  # Activated only when --profile indextts2 is passed.
+  # `make up` auto-adds this profile when models/indextts2/IndexTTS-2/ exists.
+  adapter-tts-indextts2:
+    <<: [*gpu, *shared-mounts]
+    container_name: adapter-tts-indextts2
+    profiles: ["indextts2"]
+    restart: unless-stopped
+    pull_policy: missing
+    image: ${CI_REGISTRY_IMAGE:-tts}/adapter-tts-indextts2:${CI_COMMIT_REF_SLUG:-latest}-${CI_PIPELINE_ID:-local}
+    # Worker reaches main adapter (and vice versa) via container hostnames on
+    # the default project network. Main adapter overrides TTS_INDEXTTS2_URL
+    # via .env to use http://adapter-tts-indextts2:9881 inside the network.
+    ports:
+      - "${TTS_INDEXTTS2_PORT:-9881}:9881"
+    networks:
+      - default
+    build:
+      context: .
+      dockerfile: Dockerfile.indextts2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9881/health', timeout=10)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3

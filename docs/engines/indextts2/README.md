@@ -161,4 +161,12 @@ PYTHONPATH=. uv run python scripts/indextts2/tts_clone_emotion.py \
 
 ## Offline operation
 
-Once `make install-indextts2` finishes, the worker constructs `IndexTTS2(cfg_path=<local>, model_dir=<local>)` with explicit local paths. No HuggingFace Hub calls. Combined with `HF_HUB_OFFLINE=1`, this works fully offline.
+Once `make install-indextts2` finishes, the worker constructs `IndexTTS2(cfg_path=<local>, model_dir=<local>)` with explicit local paths for the IndexTTS-2 weights themselves.
+
+**Caveat (verified):** the very first `POST /load` (and only that one) downloads `facebook/w2v-bert-2.0` (~2 GB) from HuggingFace into the standard HF cache. The IndexTeam/IndexTTS-2 checkpoint bundles `wav2vec2bert_stats.pt` (just normalization stats) but the actual w2v-bert model weights are pulled separately by upstream. After this one-time download, subsequent `/load` calls work from cache, so `HF_HUB_OFFLINE=1` is safe to set after the first successful load.
+
+To pre-warm the HF cache fully before going offline:
+```
+# from the vendor venv (network must be available)
+cd vendor/index-tts && env -u VIRTUAL_ENV uv run python -c "from transformers import AutoModel; AutoModel.from_pretrained('facebook/w2v-bert-2.0')"
+```

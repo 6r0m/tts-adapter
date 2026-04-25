@@ -1,0 +1,110 @@
+# syntax=docker/dockerfile:1
+
+# IndexTTS2 worker image - separate process because upstream pins
+# transformers==4.52.1 / torch==2.8.* which conflict with qwen-tts
+# (transformers==4.57.3) used by the main adapter image.
+#
+# What this image owns:
+#   - vendor/index-tts cloned + uv-synced at build time (self-contained)
+#   - fastapi/uvicorn/multipart/soundfile/dotenv installed in the vendor venv
+#   - scripts/indextts2/serve.py + tts_adapter/{audio_utils,gpu_utils}.py
+#
+# What it expects mounted from the host (via compose.yml):
+#   - /work/models/indextts2 -> ./models/indextts2 (the IndexTTS-2 weights)
+#   - /home/app/.cache/huggingface -> ~/.cache/huggingface (for w2v-bert
+#     auto-download on first /load; shared with the main adapter image)
+
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04 AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_HTTP_TIMEOUT=1800 \
+    GIT_LFS_SKIP_SMUDGE=1
+
+# System deps (matches main Dockerfile's set + git for the clone)
+FROM base AS deps
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    python3-pip \
+    python3-dev \
+    curl \
+    git \
+    git-lfs \
+    tini \
+    ca-certificates \
+    sox \
+    libsox-fmt-all \
+ && rm -rf /var/lib/apt/lists/* \
+ && ln -s /usr/bin/python3.10 /usr/bin/python
+
+# Install uv (pinned, same version as main image)
+ARG UV_VERSION=0.8.9
+RUN curl -LsSf https://astral.sh/uv/${UV_VERSION}/install.sh | sh \
+ && mv /root/.local/bin/uv /usr/local/bin/
+
+# Vendor stage: clone upstream, uv sync, install worker deps
+FROM deps AS vendor
+
+WORKDIR /work
+
+# Clone upstream IndexTTS2 (LFS smudge skipped: examples/*.wav are not needed
+# for the worker, and upstream's LFS budget is occasionally exhausted).
+ARG INDEXTTS_REPO=https://github.com/index-tts/index-tts
+ARG INDEXTTS_REF=main
+RUN git clone ${INDEXTTS_REPO} vendor/index-tts \
+ && cd vendor/index-tts \
+ && git checkout ${INDEXTTS_REF}
+
+# Resolve and install upstream deps + worker deps inside vendor/index-tts/.venv.
+# BuildKit cache mount keeps the ~10GB torch/transformers download warm
+# across rebuilds.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    cd vendor/index-tts \
+ && uv sync --locked \
+ && uv pip install fastapi uvicorn 'python-multipart' soundfile python-dotenv
+
+# User stage: non-root account with cache dirs preallocated
+FROM vendor AS user_setup
+
+ARG USER=app
+ARG UID=10001
+RUN useradd -m -u ${UID} -s /bin/bash ${USER} \
+ && install -d -o ${UID} -g ${UID} \
+       /work/models /work/models/indextts2 \
+       /home/${USER}/.cache/huggingface /home/${USER}/.cache/numba \
+ && chown -R ${UID}:${UID} /work/vendor
+
+# Runtime stage: copy worker script + cross-venv-safe helper modules
+FROM user_setup AS runtime
+
+ARG UID=10001
+
+# Worker script and the two adapter helper modules it imports via sys.path
+# injection. Keep this layer last - it changes most often.
+COPY --chown=${UID}:${UID} scripts/indextts2/serve.py /work/scripts/indextts2/serve.py
+COPY --chown=${UID}:${UID} tts_adapter/audio_utils.py /work/tts_adapter/audio_utils.py
+COPY --chown=${UID}:${UID} tts_adapter/gpu_utils.py /work/tts_adapter/gpu_utils.py
+COPY --chown=${UID}:${UID} tts_adapter/__init__.py /work/tts_adapter/__init__.py
+
+ENV PATH="/work/vendor/index-tts/.venv/bin:$PATH" \
+    HF_HOME="/home/app/.cache/huggingface" \
+    NUMBA_CACHE_DIR="/home/app/.cache/numba" \
+    TTS_INDEXTTS2_MODEL_DIR=/work/models/indextts2/IndexTTS-2 \
+    TTS_INDEXTTS2_PORT=9881
+
+USER ${USER}
+WORKDIR /work
+EXPOSE 9881
+
+# Worker comes up COLD - /health responds immediately, model loads on /load
+# or first /tts/clone. Healthcheck only verifies process liveness.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9881/health', timeout=10)"
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python", "/work/scripts/indextts2/serve.py"]

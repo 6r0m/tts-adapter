@@ -52,6 +52,26 @@ make download-model     # Downloads to ~/.cache/tts-adapter/models/
 
 See [Qwen3 Engine docs](docs/engines/qwen3/README.md#offline-mode) for details.
 
+### Add IndexTTS2 (optional - emotional voice cloning)
+
+IndexTTS2 runs as a separate worker process with its own venv (upstream dep
+pins conflict with `qwen-tts`, see [docs/engines/indextts2/README.md](docs/engines/indextts2/README.md)).
+
+```bash
+make install-indextts2   # Clones upstream + isolated venv + downloads checkpoints (~6 GB)
+
+# Then in two terminals:
+make run-indextts2       # IndexTTS2 worker on :9881
+make serve               # main adapter on :9880
+
+# Switch engines at runtime via the API (or set TTS_ENGINE=indextts2 in .env at boot):
+curl -X POST http://localhost:9880/model/switch \
+     -H 'content-type: application/json' \
+     -d '{"model_id":"IndexTeam/IndexTTS-2"}'
+```
+
+The main adapter forwards `/tts/clone` requests to the worker via HTTP. Cross-engine `/model/switch` unloads the previous engine before loading the target so VRAM stays within the 4070 12 GB envelope.
+
 ## Web UI
 
 Open **http://localhost:9880** - three modes (Simple, Voice Design, Voice Clone), RU/EN switch, advanced generation settings. See [Web UI docs](docs/web-ui.md).
