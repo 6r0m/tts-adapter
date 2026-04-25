@@ -133,7 +133,7 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 
 ---
 
-## Phase 0: Architecture-drift cleanup (BLOCKING  -  do this first)
+## Phase 0: Architecture-drift cleanup [DONE]
 
 > Pure subtractive work. Removes claims/code that contradict the Option C decision. **No new features.** After Phase 0 the repo honestly reflects "IndexTTS2 = WIP, isolated worker design" with no in-process trap left to step in.
 
@@ -189,7 +189,7 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
   **After Phase 0:** only `tts_adapter/engines/indextts2.py` (Phase A.1's rewrite target).
   **After Phase A.1:** no output at all.
 
-## Phase A: IndexTTS2 isolation refactor + repo-local weights convention
+## Phase A: IndexTTS2 isolation refactor + repo-local weights convention [DONE]
 
 **Two parts.** First the architecture rewrite (the in-process engine becomes a remote client), then the repo-local weights pattern that both engines adopt.
 
@@ -318,7 +318,7 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 - [ ] Capture the conflict output (expected: `transformers` and `torch` mismatches with `qwen-tts`). Paste into [docs/engines/indextts2/README.md](../docs/engines/indextts2/README.md) as the "why two processes" rationale.
 - [ ] Reset the adapter venv: `rm -rf .venv && uv sync`. (Or `uv pip uninstall indextts` plus its deps  -  but reset is cleaner.)
 
-## Phase C: Unified `/model/switch` (cross-engine swap)
+## Phase C: Unified `/model/switch` (cross-engine swap) [DONE]
 
 - [ ] [tts_adapter/api/routes.py](../tts_adapter/api/routes.py): replace the current "models from current engine only" with a registry-wide view.
   ```python
@@ -568,13 +568,13 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 
 ## Execution order
 
-1. **Phase 0** - architecture-drift cleanup. **DONE** in the current session.
-2. **Phase A.1** - IndexTTS2 isolation refactor: engine becomes `IndexTTS2RemoteEngine`, new worker `serve.py` with `/health` + `/load` + `/unload` + `/tts/clone` (lazy first-request load). Largest blast radius.
-3. **Test-infra fix** - `live_client` fixture + tightened upload/validation tests (can land in the same PR as A.1).
-4. **Phase A.2** - `models/<engine>/<name>/` + `vendor/` repo-local convention + legacy-fallback warning.
-5. **Phase B** - `make install-{qwen3,indextts2}` + `make run-indextts2`.
+1. **Phase 0** - architecture-drift cleanup. **[DONE]**
+2. **Phase A.1** - IndexTTS2 isolation refactor: engine becomes `IndexTTS2RemoteEngine`, new worker `serve.py` with `/health` + `/load` + `/unload` + `/tts/clone` (lazy first-request load) + 20MB upload cap + load/infer race closed. **[DONE]**
+3. **Test-infra fix** - `live_client` fixture (context-manager close) + tightened upload/validation tests + remote engine httpx mocks + catalog/availability + rollback regression tests + `client` alias migrated to `live_client`. **[DONE]**
+4. **Phase A.2** - `models/<engine>/<name>/` + `vendor/` repo-local convention + legacy-fallback warning. **[DONE]**
+5. **Phase B** - `make install-{qwen3,indextts2}` + real `make run-indextts2` (currently stub).
 6. **Phase B.5** - One-shot Option-A probe to document the conflict in `docs/engines/indextts2/README.md`.
-7. **Phase C** - Unified `/model/switch` (cross-engine swap orchestrates worker `/unload` and `/load`). Depends on A.1.
+7. **Phase C** - Unified `/model/switch` cross-engine swap with two-phase rollback + proactive re-warm of previous engine on target failure. Catalog vs availability split lets `/model/switch` route to indextts2 even when worker is down (returns 503 with hint, rather than 400 unknown). **[DONE]**
 8. **Phase D** - Web UI: emotion controls + cross-engine model dropdown + spinner.
 9. **Phase E** - Docker happy path: `Dockerfile.indextts2`, second compose service with `profiles: ["indextts2"]`, `make up` auto-detects via Makefile profile flag. Depends on A.1 (worker exists) and B (vendor populated).
 10. **Phase E.1** - Docker verification (both engines, qwen3-only, worker-died scenarios).

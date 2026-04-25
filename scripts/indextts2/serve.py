@@ -45,15 +45,28 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("indextts2.worker")
+
+# Load repo .env so worker-side TTS_INDEXTTS2_* vars (MODEL_DIR, USE_FP16, PORT,
+# ...) take effect. `uv run` does NOT auto-load .env; without this the worker
+# would silently use defaults even when the user thinks they configured it.
+# Soft-import: python-dotenv may not be in the vendor venv yet (Phase B will
+# add it via `uv pip install`).
+try:
+    from dotenv import load_dotenv  # noqa: E402
+    load_dotenv(_REPO_ROOT / ".env")
+except ImportError as e:
+    log.debug("python-dotenv not installed; relying on os.environ only: %s", e)
+except Exception as e:
+    log.warning("dotenv load failed (continuing with os.environ): %s", e)
+
 import soundfile as sf  # noqa: E402
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
 from fastapi.responses import JSONResponse, Response  # noqa: E402
 
 from tts_adapter.audio_utils import bytes_to_tempfile, trim_silence  # noqa: E402
 from tts_adapter.gpu_utils import unload_gpu_model  # noqa: E402
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-log = logging.getLogger("indextts2.worker")
 
 
 def _env_bool(name: str, default: bool) -> bool:

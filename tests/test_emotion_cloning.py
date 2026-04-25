@@ -304,36 +304,84 @@ class TestRoutesIndex:
 
 
 class TestCrossEngineSwitchRollback:
-    """Failed warmup on a cross-engine swap must roll back _engine."""
+    """Failed warmup on a cross-engine swap must roll back _engine AND
+    attempt to re-warm the previous engine (so it isn't left cold)."""
 
-    def test_failed_switch_rolls_back_engine(self, monkeypatch):
+    def _setup_qwen3_current(self, monkeypatch):
+        from tts_adapter.api import routes
+        from tts_adapter.engines.qwen3 import Qwen3Engine
+
+        fake_current = Qwen3Engine()
+        fake_current._model = None  # don't trigger real GPU unload
+        monkeypatch.setattr(routes, "_engine", fake_current)
+        return fake_current
+
+    def test_failed_switch_rolls_back_and_attempts_restore(self, monkeypatch):
         from tts_adapter.api import routes
         from tts_adapter.contract import SwitchModelRequest
         from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
         from tts_adapter.engines.qwen3 import Qwen3Engine
-
-        # Pretend Qwen3 is the current engine, and we don't actually warm it.
-        fake_current = Qwen3Engine()
-        # Don't let _unload_engine try to release fake_current's GPU memory.
-        fake_current._model = None
-        monkeypatch.setattr(routes, "_engine", fake_current)
-
-        # Patch IndexTTS2RemoteEngine.warmup to always raise (worker dead).
-        def _boom(self):
-            raise RuntimeError("IndexTTS2 worker not reachable at http://localhost:9881. "
-                               "Start it with: make run-indextts2")
-
-        monkeypatch.setattr(IndexTTS2RemoteEngine, "warmup", _boom)
-
-        # The switch must return 503 AND restore _engine to fake_current.
         from fastapi import HTTPException
+
+        fake_current = self._setup_qwen3_current(monkeypatch)
+
+        # Target's warmup raises (worker dead).
+        monkeypatch.setattr(
+            IndexTTS2RemoteEngine,
+            "warmup",
+            lambda self: (_ for _ in ()).throw(
+                RuntimeError("IndexTTS2 worker not reachable at http://localhost:9881")
+            ),
+        )
+
+        # Track whether current.warmup was called for restore.
+        restore_calls = []
+        monkeypatch.setattr(
+            Qwen3Engine, "warmup", lambda self: restore_calls.append(True)
+        )
 
         with pytest.raises(HTTPException) as exc:
             routes.switch_model(SwitchModelRequest(model_id="IndexTeam/IndexTTS-2"))
+
         assert exc.value.status_code == 503
         assert "not reachable" in exc.value.detail
-        assert "rolled back" in exc.value.detail.lower() or "unloaded" in exc.value.detail.lower()
-        # Critical: _engine must be back to the previous reference, not the broken target.
+        assert "rolled back" in exc.value.detail.lower()
+        assert "previous engine restored" in exc.value.detail.lower()
+        # Critical: _engine must be back to the previous reference.
+        assert routes._engine is fake_current
+        # Restore was attempted.
+        assert len(restore_calls) == 1
+
+    def test_rollback_when_restore_also_fails(self, monkeypatch):
+        """Restore is best-effort - if it also fails, the response message
+        must say so (not falsely claim restoration)."""
+        from tts_adapter.api import routes
+        from tts_adapter.contract import SwitchModelRequest
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+        from tts_adapter.engines.qwen3 import Qwen3Engine
+        from fastapi import HTTPException
+
+        fake_current = self._setup_qwen3_current(monkeypatch)
+
+        monkeypatch.setattr(
+            IndexTTS2RemoteEngine,
+            "warmup",
+            lambda self: (_ for _ in ()).throw(RuntimeError("worker dead")),
+        )
+
+        def _restore_boom(self):
+            raise RuntimeError("OOM during restore")
+
+        monkeypatch.setattr(Qwen3Engine, "warmup", _restore_boom)
+
+        with pytest.raises(HTTPException) as exc:
+            routes.switch_model(SwitchModelRequest(model_id="IndexTeam/IndexTTS-2"))
+
+        assert exc.value.status_code == 503
+        assert "rolled back" in exc.value.detail.lower()
+        assert "restore attempt failed" in exc.value.detail.lower()
+        assert "lazy-reload" in exc.value.detail.lower()
+        # _engine must still be the previous reference even when restore fails.
         assert routes._engine is fake_current
 
 

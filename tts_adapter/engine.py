@@ -96,7 +96,7 @@ class TTSEngine(Protocol):
         """Whether this engine can combine voice cloning with emotion control.
 
         Engines that return False MUST be rejected at the API layer when
-        emotion params are present — never silently ignored.
+        emotion params are present - never silently ignored.
         """
         ...
 

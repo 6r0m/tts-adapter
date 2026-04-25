@@ -136,6 +136,20 @@ def _unload_engine(engine: TTSEngine) -> None:
         log.warning("unload of engine %s failed (continuing): %s", engine.engine_name, e)
 
 
+def _try_restore(engine: TTSEngine) -> str:
+    """Best-effort re-warm of an engine after a failed cross-engine swap.
+
+    Returns a short status string for the rollback message so the operator
+    knows whether the previous engine is hot, cold, or in an unknown state.
+    """
+    try:
+        engine.warmup()
+        return "previous engine restored"
+    except Exception as restore_err:
+        log.warning("failed to restore engine %s: %s", engine.engine_name, restore_err)
+        return f"restore attempt failed ({restore_err}); next request will lazy-reload"
+
+
 def _switch_response(engine: TTSEngine, message: str) -> SwitchModelResponse:
     return SwitchModelResponse(
         success=True,
@@ -215,23 +229,22 @@ def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
     _unload_engine(current)
 
     # Step 3: warmup target. If this fails, rollback _engine to the previous
-    # reference so the global doesn't point at a broken target. The previous
-    # engine has been unloaded; the next request will lazy-reload it.
+    # reference AND proactively try to re-warm it (the previous engine was
+    # unloaded for VRAM in step 2, so without this the next request would
+    # have to wait for lazy reload - that's fine for Qwen3 which lazy-loads
+    # in synthesize(), but proactive warm is better operator UX).
     try:
         target_engine.warmup()
-    except RuntimeError as e:
+    except (RuntimeError, Exception) as e:
+        is_runtime = isinstance(e, RuntimeError)
         log.warning("target warmup failed; rolling back _engine to %s", current.engine_name)
         _engine = current
+        restore_note = _try_restore(current)
+        status = 503 if is_runtime else 500
+        prefix = str(e) if is_runtime else f"Failed to load {target_engine_name}: {e}"
         raise HTTPException(
-            status_code=503,
-            detail=f"{e} (current engine '{current.engine_name}' was unloaded; the next request will reload it)",
-        )
-    except Exception as e:
-        log.warning("target warmup failed; rolling back _engine to %s", current.engine_name)
-        _engine = current
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to load {target_engine_name}: {e} (rolled back to '{current.engine_name}')",
+            status_code=status,
+            detail=f"{prefix} (rolled back to '{current.engine_name}'; {restore_note})",
         )
 
     # Step 4: success - commit globals.
