@@ -5,11 +5,37 @@ let serverInfo = {};
 let availableModels = [];
 let pendingModelId = null;
 let currentTab = 'simple';
+let isSwitchingModel = false;
+const HEALTH_POLL_MS = 3000;
+const EMOTION_VECTOR_KEYS = ['happy', 'angry', 'sad', 'afraid', 'disgusted', 'melancholic', 'surprised', 'calm'];
+
+function getModelEngine(modelOrId) {
+    const id = typeof modelOrId === 'string' ? modelOrId : modelOrId?.id;
+    if (!id) return 'unknown';
+    if (id.startsWith('IndexTeam/') || id.includes('IndexTTS')) return 'indextts2';
+    if (id.startsWith('Qwen/')) return 'qwen3';
+    return 'unknown';
+}
+
+function cleanModelName(name) {
+    return (name || '')
+        .replace(' (Clone, Low VRAM)', ' Low VRAM')
+        .replace(' (Clone)', '');
+}
+
+function getModelLabel(modelOrId) {
+    const model = typeof modelOrId === 'string'
+        ? availableModels.find(m => m.id === modelOrId)
+        : modelOrId;
+    const id = typeof modelOrId === 'string' ? modelOrId : modelOrId?.id;
+    const label = cleanModelName(model?.name || id || 'Unknown');
+    return `[${getModelEngine(model || id)}] ${label}`;
+}
 
 function getModelName(modelId) {
     if (!modelId) return 'Unknown';
     const model = availableModels.find(m => m.id === modelId);
-    return model ? model.name : modelId;
+    return model ? getModelLabel(model) : modelId;
 }
 
 function getCapabilitiesList(data) {
@@ -17,6 +43,7 @@ function getCapabilitiesList(data) {
     if (data?.supports_custom_voice) caps.push(t('cap.simple'));
     if (data?.supports_design) caps.push(t('cap.design'));
     if (data?.supports_cloning) caps.push(t('cap.clone'));
+    if (data?.supports_emotional_cloning) caps.push(t('cap.emotion'));
     return caps;
 }
 
@@ -36,16 +63,30 @@ function updateStatusText() {
     document.title = `${t('app.title')} — ${modelName} (${capText})`;
 }
 
-async function checkStatus() {
+async function checkStatus(options = {}) {
+    if (isSwitchingModel && !options.refreshModels) return;
+
     const status = document.getElementById('status');
     try {
+        const previousModel = serverInfo.model;
+        const previousEngine = serverInfo.engine;
         const res = await fetch('/health');
         const data = await res.json();
         serverInfo = data;
         status.className = 'status ok';
         updateStatusText();
         updateTabAvailability(data);
-        await loadModels();
+
+        const shouldRefreshModels = options.refreshModels
+            || availableModels.length === 0
+            || previousModel !== data.model
+            || previousEngine !== data.engine;
+        if (shouldRefreshModels) {
+            await loadModels();
+        } else {
+            syncModelSelect(data.model);
+            updateModelHelp();
+        }
     } catch (e) {
         status.className = 'status error';
         status.textContent = t('status.error');
@@ -63,10 +104,11 @@ async function loadModels() {
         data.available.forEach(m => {
             const opt = document.createElement('option');
             opt.value = m.id;
-            opt.textContent = m.name;
+            opt.textContent = getModelLabel(m);
             if (m.id === data.current) opt.selected = true;
             select.appendChild(opt);
         });
+        select.disabled = isSwitchingModel;
         updateModelFeatures(serverInfo.model || data.current);
         updateStatusText();
         updateModelHelp();
@@ -74,6 +116,16 @@ async function loadModels() {
         console.error('Failed to load models:', e);
         updateModelHelp();
     }
+}
+
+function syncModelSelect(modelId) {
+    const select = document.getElementById('model-select');
+    if (!select) return;
+    if ([...select.options].some(opt => opt.value === modelId)) {
+        select.value = modelId;
+    }
+    select.disabled = isSwitchingModel;
+    updateModelFeatures(modelId);
 }
 
 function updateModelFeatures(modelId) {
@@ -84,6 +136,7 @@ function updateModelFeatures(modelId) {
         if (model.supports_custom_voice) caps.push(t('cap.simple'));
         if (model.supports_design) caps.push(t('cap.design'));
         if (model.supports_cloning) caps.push(t('cap.clone'));
+        if (model.supports_emotional_cloning) caps.push(t('cap.emotion'));
         if (caps.length === 1) {
             features.textContent = `${t('cap.mode')}: ${caps[0]}`;
         } else if (caps.length > 1) {
@@ -117,13 +170,14 @@ function updateModelHelp() {
     availableModels.forEach(model => {
         const li = document.createElement('li');
         const name = document.createElement('strong');
-        name.textContent = model.name;
+        name.textContent = getModelLabel(model);
         li.appendChild(name);
 
         const caps = [];
         if (model.supports_custom_voice) caps.push(t('cap.simple_full'));
         if (model.supports_design) caps.push(t('cap.design_full'));
         if (model.supports_cloning) caps.push(t('cap.clone_full'));
+        if (model.supports_emotional_cloning) caps.push(t('cap.emotion_full'));
         const capText = caps.length ? caps.join(', ') : 'Unknown';
         const lowVram = model.id && model.id.includes('0.6B') ? ` ${t('help.low_vram')}` : '';
         li.appendChild(document.createTextNode(` - ${t('help.use_for')} ${capText}.${lowVram}`));
@@ -160,26 +214,47 @@ function isTabSupported(tab) {
     return false;
 }
 
+function isCrossEngineSwitch(modelId) {
+    const targetEngine = getModelEngine(modelId);
+    return !!serverInfo.engine && targetEngine !== 'unknown' && targetEngine !== serverInfo.engine;
+}
+
 function onModelSelect(modelId) {
-    if (modelId === serverInfo.model) return;
+    if (!modelId || modelId === serverInfo.model) return;
     pendingModelId = modelId;
     updateModelFeatures(modelId);
     const model = availableModels.find(m => m.id === modelId);
+    const warning = isCrossEngineSwitch(modelId) ? t('modal.switch_warn_engine') : t('modal.switch_warn');
     document.getElementById('modal-message').textContent =
-        `${t('modal.switch_to')} ${model?.name || modelId}? ${t('modal.switch_warn')}`;
+        `${t('modal.switch_to')} ${model ? getModelLabel(model) : modelId}? ${warning}`;
     document.getElementById('modal-overlay').classList.add('active');
 }
 
 function cancelSwitch() {
+    if (isSwitchingModel) return;
     document.getElementById('modal-overlay').classList.remove('active');
     document.getElementById('model-select').value = serverInfo.model;
     updateModelFeatures(serverInfo.model);
     pendingModelId = null;
 }
 
+function setModelSwitchBusy(busy) {
+    const confirm = document.getElementById('modal-confirm');
+    const cancel = document.getElementById('modal-cancel');
+    const select = document.getElementById('model-select');
+    if (select) select.disabled = busy;
+    if (cancel) cancel.disabled = busy;
+    if (confirm) {
+        confirm.disabled = busy;
+        confirm.classList.toggle('btn-busy', busy);
+        confirm.textContent = busy ? t('btn.switching') : t('modal.confirm_switch');
+    }
+}
+
 async function confirmSwitch() {
-    document.getElementById('modal-overlay').classList.remove('active');
-    document.getElementById('loading-overlay').classList.add('active');
+    if (!pendingModelId || isSwitchingModel) return;
+    isSwitchingModel = true;
+    setModelSwitchBusy(true);
 
     try {
         const res = await fetch('/model/switch', {
@@ -198,15 +273,19 @@ async function confirmSwitch() {
         serverInfo.supports_cloning = data.supports_cloning;
         serverInfo.supports_design = data.supports_design;
         serverInfo.supports_custom_voice = data.supports_custom_voice;
+        serverInfo.supports_emotional_cloning = data.supports_emotional_cloning;
 
-        await checkStatus();
+        await checkStatus({ refreshModels: true });
+        document.getElementById('modal-overlay').classList.remove('active');
 
     } catch (e) {
+        document.getElementById('modal-overlay').classList.remove('active');
         alert(`${t('error.switch_failed')}: ${e.message}`);
         document.getElementById('model-select').value = serverInfo.model;
         updateModelFeatures(serverInfo.model);
     } finally {
-        document.getElementById('loading-overlay').classList.remove('active');
+        isSwitchingModel = false;
+        setModelSwitchBusy(false);
         pendingModelId = null;
     }
 }
@@ -222,6 +301,7 @@ function updateTabAvailability(data) {
     setTabVisibility(simpleTab, data.supports_custom_voice);
     setTabVisibility(designTab, data.supports_design);
     setTabVisibility(cloneTab, data.supports_cloning);
+    updateEmotionControls(data);
 
     const availableTabs = [];
     if (data.supports_custom_voice) availableTabs.push('simple');
@@ -262,6 +342,72 @@ function switchTab(tab) {
     tabButton.classList.add('active');
     document.getElementById('tab-' + tab).classList.add('active');
     document.getElementById('result').style.display = 'none';
+}
+
+function updateEmotionControls(data = serverInfo) {
+    const controls = document.getElementById('emotion-controls');
+    if (!controls) return;
+    const supported = !!data?.supports_emotional_cloning;
+    controls.hidden = !supported;
+    controls.setAttribute('aria-hidden', supported ? 'false' : 'true');
+    if (!supported) {
+        const mode = document.getElementById('clone-emotion-mode');
+        if (mode) mode.value = 'none';
+    }
+    updateEmotionModePanels();
+}
+
+function onEmotionModeChange() {
+    updateEmotionModePanels();
+}
+
+function updateEmotionModePanels() {
+    const mode = document.getElementById('clone-emotion-mode')?.value || 'none';
+    const controls = document.getElementById('emotion-controls');
+    const active = !controls?.hidden && mode !== 'none';
+    document.querySelectorAll('.emotion-mode-panel').forEach(panel => {
+        panel.hidden = panel.dataset.emotionMode !== mode;
+    });
+    const alpha = document.getElementById('clone-emotion-alpha');
+    const alphaWrap = document.getElementById('clone-emotion-alpha-wrap');
+    if (alpha) alpha.disabled = !active;
+    if (alphaWrap) alphaWrap.classList.toggle('emotion-disabled', !active);
+    updateEmotionAlphaValue();
+}
+
+function updateEmotionAlphaValue() {
+    const alpha = document.getElementById('clone-emotion-alpha');
+    const value = document.getElementById('clone-emotion-alpha-value');
+    if (!alpha || !value) return;
+    const num = Number.parseFloat(alpha.value);
+    value.textContent = Number.isFinite(num) ? num.toFixed(2) : '0.00';
+}
+
+function getEmotionVectorValue() {
+    return EMOTION_VECTOR_KEYS.map(key => {
+        const field = document.getElementById(`clone-emotion-${key}`);
+        const value = Number.parseFloat(field?.value || '0');
+        return Number.isFinite(value) ? value : 0;
+    }).join(',');
+}
+
+function appendEmotionFormData(form) {
+    if (!serverInfo.supports_emotional_cloning) return;
+    const mode = document.getElementById('clone-emotion-mode')?.value || 'none';
+    if (mode === 'none') return;
+
+    form.append('emotion_alpha', document.getElementById('clone-emotion-alpha')?.value || '1.0');
+    if (mode === 'audio') {
+        const audioFile = document.getElementById('clone-emotion-audio')?.files[0];
+        if (!audioFile) throw new Error(t('error.no_emotion_audio'));
+        form.append('emotion_audio', audioFile);
+    } else if (mode === 'text') {
+        const emotionText = document.getElementById('clone-emotion-text')?.value.trim() || '';
+        if (!emotionText) throw new Error(t('error.no_emotion_text'));
+        form.append('emotion_text', emotionText);
+    } else if (mode === 'vector') {
+        form.append('emotion_vector', getEmotionVectorValue());
+    }
 }
 
 function showResult(blob) {
@@ -396,6 +542,7 @@ async function generateClone() {
         form.append('reference_text', document.getElementById('clone-ref-text').value);
         const cloneSettings = getAdvancedSettings('clone');
         Object.entries(cloneSettings).forEach(([k, v]) => form.append(k, v));
+        appendEmotionFormData(form);
 
         const res = await fetch('/tts/clone', { method: 'POST', body: form });
 
@@ -471,6 +618,8 @@ function rerenderDynamicTexts() {
         updateModelFeatures(document.getElementById('model-select')?.value || serverInfo.model);
         updateTabAvailability(serverInfo);
     }
+    setModelSwitchBusy(isSwitchingModel);
+    updateEmotionModePanels();
     if (document.getElementById('model-help-overlay')?.classList.contains('active')) {
         updateModelHelp();
     }
@@ -479,5 +628,6 @@ function rerenderDynamicTexts() {
 // Boot: apply translations first, then load status
 applyTranslations();
 updateLangToggle();
-checkStatus();
+checkStatus({ refreshModels: true });
+setInterval(() => checkStatus(), HEALTH_POLL_MS);
 """

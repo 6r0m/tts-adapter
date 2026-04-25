@@ -392,14 +392,14 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 
 ## Phase D: Web UI
 
-- [ ] [tts_adapter/web/templates_body.py](../tts_adapter/web/templates_body.py): on the Voice Clone tab, render emotion controls (audio upload / text / 8-float vector + alpha slider) **conditional on `supports_emotional_cloning`** from `/health`.
-- [ ] [tts_adapter/web/templates_script.py](../tts_adapter/web/templates_script.py): the existing periodic `/health` poller (see [todo/multi_client_sync.md](multi_client_sync.md) for context) toggles the emotion controls visibility when the flag flips after a model switch.
-- [ ] Model dropdown:
+- [x] [tts_adapter/web/templates_body.py](../tts_adapter/web/templates_body.py): on the Voice Clone tab, render emotion controls (audio upload / text / 8-float vector + alpha slider) **conditional on `supports_emotional_cloning`** from `/health`.
+- [x] [tts_adapter/web/templates_script.py](../tts_adapter/web/templates_script.py): the existing periodic `/health` poller (see [todo/multi_client_sync.md](multi_client_sync.md) for context) toggles the emotion controls visibility when the flag flips after a model switch.
+- [x] Model dropdown:
   - Source: `GET /models` (which already filters out engines whose worker is unreachable, see Phase A.1 `IndexTTS2RemoteEngine.available_models()`). User only sees switchable options.
   - Label format: `[qwen3] Base 1.7B`, `[indextts2] IndexTTS-2`. Switch button calls the same `/model/switch` we already use.
   - Switch UX: button shows a spinner and disables until response. Same affordance as today's existing model switch (which already takes ~2 min for Qwen3 variant reloads). Show estimated wait copy: "Switching engine, this can take up to 60 seconds..."
   - Failure path: 503 from `/model/switch` -> reuse the existing model-switch error toast / message component. No new error UI.
-- [ ] [tts_adapter/web/templates_i18n.py](../tts_adapter/web/templates_i18n.py): add labels for emotion-mode dropdown, alpha slider, and the cross-engine switch warning ("This will unload the current engine and load...").
+- [x] [tts_adapter/web/templates_i18n.py](../tts_adapter/web/templates_i18n.py): add labels for emotion-mode dropdown, alpha slider, and the cross-engine switch warning ("This will unload the current engine and load...").
 
 ## Phase E: Docker happy path (`make up` brings up everything that's installed)
 

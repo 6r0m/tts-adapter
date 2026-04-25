@@ -17,9 +17,11 @@ Implementation: [templates_i18n.py](../tts_adapter/web/templates_i18n.py) — si
 |-----|----------------|----------|
 | **Simple** | CustomVoice | Preset speakers + style instruction |
 | **Voice Design** | VoiceDesign | Create voice from text description |
-| **Voice Clone** | Base | Clone from audio sample |
+| **Voice Clone** | Base / Base+Emotion | Clone from audio sample; emotion controls appear when `/health.supports_emotional_cloning=true` |
 
-Tabs auto-hide when model doesn't support them. Model can be switched via dropdown (takes ~2 min to reload).
+Tabs auto-hide when model doesn't support them. Model can be switched via dropdown; the list comes from `GET /models` and labels include the engine prefix, for example `[qwen3] Base 1.7B` or `[indextts2] IndexTTS-2`.
+
+Cross-engine switches unload the current engine and load the selected one. The UI disables the switch action and shows a spinner until `/model/switch` returns.
 
 ## Advanced Settings
 
@@ -29,7 +31,7 @@ Full reference with ranges and tuning tips: [params.md](engines/qwen3/params.md)
 
 ## Multi-Client Usage
 
-Multiple browsers/PCs can use the same server. Known limitation: model switching is global — if one client switches model, all clients are affected. See [todo/multi_client_sync.md](../todo/multi_client_sync.md) for planned improvements (polling, localStorage sync).
+Multiple browsers/PCs can use the same server. The UI polls `/health` every 3 seconds, so tabs and emotion controls follow model switches made by another client.
 
 **LAN troubleshooting:**
 - If Chrome doesn't connect but `curl` works — check proxy settings (Radmin VPN, corporate proxy)
@@ -45,4 +47,4 @@ templates_body.py     — HTML structure (data-i18n attributes)
 templates_style.py    — CSS
 ```
 
-Boot order: `applyTranslations()` → `updateLangToggle()` → `checkStatus()` — ensures correct language before async server calls.
+Boot order: `applyTranslations()` → `updateLangToggle()` → `checkStatus({ refreshModels: true })` → periodic `/health` polling — ensures correct language before async server calls and keeps model capabilities in sync.

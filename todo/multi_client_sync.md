@@ -8,7 +8,7 @@ and the other client's UI stays stale — showing old model state. If the second
 back, the first client gets 400 errors on `/tts/design`.
 
 ## Minimal Fix (recommended)
-- [ ] Add periodic health polling (~3-5s interval) in `templates_script.py`
+- [x] Add periodic health polling (~3-5s interval) in `templates_script.py`
   - `setInterval(checkStatus, 3000)` — keeps all clients in sync with actual server model
   - Tabs auto-update when model changes, new mode appears within seconds
   - Cheapest fix, covers 90% of the problem

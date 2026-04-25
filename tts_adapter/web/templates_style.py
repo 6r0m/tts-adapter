@@ -73,6 +73,25 @@ button {
 }
 button:hover { background: #45a049; }
 button:disabled { background: #ccc; cursor: not-allowed; }
+button.btn-busy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+button.btn-busy:disabled {
+    background: #f57c00;
+    color: #fff;
+}
+button.btn-busy::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.45);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
 .result {
     margin-top: 20px;
     padding: 15px;
@@ -173,6 +192,7 @@ audio { width: 100%; margin: 10px 0; }
     margin: 0;
     padding: 5px 10px;
     font-size: 13px;
+    min-width: 260px;
 }
 .model-selector label {
     margin: 0;
@@ -262,6 +282,52 @@ audio { width: 100%; margin: 10px 0; }
     font-size: 14px;
     color: #666;
 }
+/* Emotion controls */
+.emotion-controls {
+    margin: 12px 0 15px 0;
+    padding: 12px;
+    border: 1px solid #d6e7d7;
+    border-radius: 4px;
+    background: #f7fbf7;
+}
+.emotion-controls select,
+.emotion-controls input {
+    margin-bottom: 10px;
+}
+.emotion-mode-panel {
+    margin-top: 4px;
+}
+.emotion-vector-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+.emotion-vector-grid label {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 0;
+}
+.emotion-vector-grid input {
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 13px;
+    margin: 3px 0 0 0;
+}
+.emotion-alpha-wrap {
+    margin-top: 4px;
+}
+.emotion-alpha-wrap label {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+.emotion-alpha-wrap input[type="range"] {
+    padding: 0;
+    margin-bottom: 0;
+}
+.emotion-disabled {
+    opacity: 0.55;
+}
 /* Advanced settings */
 .advanced-settings {
     margin: 10px 0 15px 0;
@@ -335,4 +401,25 @@ audio { width: 100%; margin: 10px 0; }
 .advanced-help-content { color: #555; font-size: 13px; line-height: 1.5; }
 .param-help-list { margin: 10px 0; padding-left: 18px; }
 .param-help-list li { margin-bottom: 8px; }
+@media (max-width: 640px) {
+    .title-row,
+    .row,
+    .model-selector {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .model-selector select {
+        width: 100%;
+        min-width: 0;
+    }
+    .model-help {
+        align-self: flex-start;
+    }
+    .tabs {
+        flex-wrap: wrap;
+    }
+    .emotion-vector-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
 """

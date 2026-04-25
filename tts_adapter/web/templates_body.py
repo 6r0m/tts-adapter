@@ -62,7 +62,7 @@ INDEX_BODY = """
     <div id="loading-overlay" class="loading-overlay">
         <div class="loading-spinner"></div>
         <div class="loading-text" data-i18n="loading.text">Switching model...</div>
-        <div class="loading-hint" data-i18n="loading.hint">This may take 1-2 minutes. Please wait.</div>
+        <div class="loading-hint" data-i18n="loading.hint">This can take up to 60 seconds. Please wait.</div>
     </div>
 
     <!-- Confirmation modal -->
@@ -71,8 +71,8 @@ INDEX_BODY = """
             <h3 data-i18n="modal.switch_title">Switch Model?</h3>
             <p id="modal-message" data-i18n="modal.switch_msg">This will reload the TTS model. Server unavailable for ~2 minutes.</p>
             <div class="modal-buttons">
-                <button class="btn-cancel" onclick="cancelSwitch()" data-i18n-title="modal.cancel_title" title="Cancel model switch" type="button" data-i18n="modal.cancel">Cancel</button>
-                <button class="btn-confirm" onclick="confirmSwitch()" data-i18n-title="modal.confirm_title" title="Confirm model switch" type="button" data-i18n="modal.confirm_switch">Switch Model</button>
+                <button id="modal-cancel" class="btn-cancel" onclick="cancelSwitch()" data-i18n-title="modal.cancel_title" title="Cancel model switch" type="button" data-i18n="modal.cancel">Cancel</button>
+                <button id="modal-confirm" class="btn-confirm" onclick="confirmSwitch()" data-i18n-title="modal.confirm_title" title="Confirm model switch" type="button" data-i18n="modal.confirm_switch">Switch Model</button>
             </div>
         </div>
     </div>
@@ -188,6 +188,48 @@ INDEX_BODY = """
 
             <label for="clone-ref-text" data-i18n="label.ref_text">Reference transcript (optional, improves quality)</label>
             <input type="text" id="clone-ref-text" data-i18n-placeholder="ph.ref_text" placeholder="What is said in the reference audio" data-i18n-title="title.ref_text" title="Optional transcript of the reference audio">
+
+            <div id="emotion-controls" class="emotion-controls" hidden aria-hidden="true">
+                <label for="clone-emotion-mode" data-i18n="label.emotion_mode">Emotion control</label>
+                <select id="clone-emotion-mode" onchange="onEmotionModeChange()" data-i18n-title="title.emotion_mode" title="Optional emotion input for models that support emotional cloning">
+                    <option value="none" data-i18n="emotion.none">None</option>
+                    <option value="audio" data-i18n="emotion.audio">Emotion audio</option>
+                    <option value="text" data-i18n="emotion.text">Emotion text</option>
+                    <option value="vector" data-i18n="emotion.vector">Emotion vector</option>
+                </select>
+
+                <div id="clone-emotion-audio-panel" class="emotion-mode-panel" data-emotion-mode="audio" hidden>
+                    <label for="clone-emotion-audio" data-i18n="label.emotion_audio">Emotion reference audio (WAV)</label>
+                    <input type="file" id="clone-emotion-audio" accept=".wav,audio/wav" data-i18n-title="title.emotion_audio" title="Optional WAV file for emotion transfer">
+                </div>
+
+                <div id="clone-emotion-text-panel" class="emotion-mode-panel" data-emotion-mode="text" hidden>
+                    <label for="clone-emotion-text" data-i18n="label.emotion_text">Emotion text</label>
+                    <input type="text" id="clone-emotion-text" data-i18n-placeholder="ph.emotion_text" placeholder="e.g., excited and warm" data-i18n-title="title.emotion_text" title="Free-form emotion description">
+                </div>
+
+                <div id="clone-emotion-vector-panel" class="emotion-mode-panel" data-emotion-mode="vector" hidden>
+                    <label data-i18n="label.emotion_vector">Emotion vector</label>
+                    <div class="emotion-vector-grid">
+                        <label><span data-i18n="emotion.happy">Happy</span><input type="number" id="clone-emotion-happy" value="0" min="0" max="1" step="0.1"></label>
+                        <label><span data-i18n="emotion.angry">Angry</span><input type="number" id="clone-emotion-angry" value="0" min="0" max="1" step="0.1"></label>
+                        <label><span data-i18n="emotion.sad">Sad</span><input type="number" id="clone-emotion-sad" value="0" min="0" max="1" step="0.1"></label>
+                        <label><span data-i18n="emotion.afraid">Afraid</span><input type="number" id="clone-emotion-afraid" value="0" min="0" max="1" step="0.1"></label>
+                        <label><span data-i18n="emotion.disgusted">Disgusted</span><input type="number" id="clone-emotion-disgusted" value="0" min="0" max="1" step="0.1"></label>
+                        <label><span data-i18n="emotion.melancholic">Melancholic</span><input type="number" id="clone-emotion-melancholic" value="0" min="0" max="1" step="0.1"></label>
+                        <label><span data-i18n="emotion.surprised">Surprised</span><input type="number" id="clone-emotion-surprised" value="0" min="0" max="1" step="0.1"></label>
+                        <label><span data-i18n="emotion.calm">Calm</span><input type="number" id="clone-emotion-calm" value="0" min="0" max="1" step="0.1"></label>
+                    </div>
+                </div>
+
+                <div id="clone-emotion-alpha-wrap" class="emotion-alpha-wrap emotion-disabled">
+                    <label for="clone-emotion-alpha">
+                        <span data-i18n="label.emotion_alpha">Emotion strength</span>
+                        <span id="clone-emotion-alpha-value">0.60</span>
+                    </label>
+                    <input type="range" id="clone-emotion-alpha" value="0.6" min="0" max="1" step="0.05" oninput="updateEmotionAlphaValue()" data-i18n-title="title.emotion_alpha" title="Emotion blend strength">
+                </div>
+            </div>
 """ + _advanced_settings("clone") + """
 
             <button onclick="generateClone()" data-i18n-title="btn.clone_title" title="Generate speech with cloned voice" type="button" data-i18n="btn.generate_clone">Generate with Cloned Voice</button>
