@@ -1,9 +1,12 @@
 """FastAPI routes for TTS adapter."""
 
 import io
+import logging
+import os
 import re
 import zipfile
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -18,11 +21,18 @@ from ..contract import (
     TTSRequest,
 )
 from ..engine import TTSEngine
-from ..engines import create_engine
+from ..engines import _ENGINES, create_engine
+from ..gpu_utils import unload_gpu_model
 from ..web import router as web_router
+
+log = logging.getLogger(__name__)
 
 # Per-upload size cap (DoS protection on /tts/clone).
 _MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+
+# Legacy model-cache path. Accepted as a fallback for one minor release,
+# warned once at startup. See todo/engine_install_and_switch.md policy table.
+_LEGACY_CACHE_DIR = Path.home() / ".cache" / "tts-adapter"
 
 # Global engine instance
 _engine: TTSEngine | None = None
@@ -36,9 +46,39 @@ def get_engine() -> TTSEngine:
     return _engine
 
 
+def _warn_if_legacy_cache_path() -> None:
+    """Emit ONE warning per startup if any engine's configured path lives under
+    the legacy ~/.cache/tts-adapter/ tree. Never per-request.
+
+    Removal target: next minor release.
+    """
+    legacy = str(_LEGACY_CACHE_DIR.expanduser().resolve())
+    candidates = {
+        "TTS_QWEN3_MODEL_PATH": os.environ.get("TTS_QWEN3_MODEL_PATH", ""),
+        "TTS_INDEXTTS2_MODEL_DIR": os.environ.get("TTS_INDEXTTS2_MODEL_DIR", ""),
+    }
+    for var, raw in candidates.items():
+        if not raw:
+            continue
+        try:
+            resolved = str(Path(raw).expanduser().resolve())
+        except OSError:
+            continue
+        if resolved.startswith(legacy):
+            log.warning(
+                "Using legacy model cache path under ~/.cache/tts-adapter via %s. "
+                "Set %s to a repo-local ./models/<engine>/<name>/ path explicitly. "
+                "This fallback will be removed in the next minor release.",
+                var,
+                var,
+            )
+            return  # one warning is enough
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Warmup model on startup."""
+    _warn_if_legacy_cache_path()
     engine = get_engine()
     engine.warmup()
     yield
@@ -71,60 +111,106 @@ def health() -> HealthResponse:
     )
 
 
+def _models_index() -> dict[str, str]:
+    """Map model_id -> engine_name across ALL registered engines.
+
+    Engines whose backend isn't available right now (e.g. IndexTTS2 worker
+    is down) return [] from available_models(), so they're naturally
+    excluded from the index without route-level engine-name branching.
+    """
+    return {m.id: name for name, cls in _ENGINES.items() for m in cls().available_models()}
+
+
+def _switch_response(engine: TTSEngine, message: str) -> SwitchModelResponse:
+    return SwitchModelResponse(
+        success=True,
+        model=engine.model_id,
+        message=message,
+        supports_cloning=engine.supports_cloning,
+        supports_design=engine.supports_design,
+        supports_custom_voice=engine.supports_custom_voice,
+        supports_emotional_cloning=engine.supports_emotional_cloning,
+    )
+
+
 @app.get("/models", response_model=ModelsResponse)
 def list_models() -> ModelsResponse:
-    """List models the current engine can switch between."""
+    """List models from ALL registered engines whose backend is reachable.
+
+    For Qwen3 this is its 4 variants; for IndexTTS2 it's the single
+    IndexTTS-2 entry IF the worker is up (otherwise it's filtered out).
+    """
     engine = get_engine()
-    return ModelsResponse(
-        current=engine.model_id,
-        available=engine.available_models(),
-    )
+    available = [m for cls in _ENGINES.values() for m in cls().available_models()]
+    return ModelsResponse(current=engine.model_id, available=available)
 
 
 @app.post("/model/switch", response_model=SwitchModelResponse)
 def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
-    """Switch to a different model within the current engine.
+    """Switch to a different model.
 
-    Warning: This unloads the current model and loads the new one.
-    Takes ~2 minutes and server is unavailable during reload.
+    Same "unload current, load new" pattern as the previous Qwen3-only
+    variant switch, just extended to work across engines:
+
+    - Same engine + different model -> existing engine.reload(new_id) path.
+    - Different engine -> unload current (in-process gpu_utils for Qwen3,
+      worker /unload for IndexTTS2RemoteEngine), then construct + warmup
+      the target engine.
+
+    Server is briefly unavailable during reload (~30-120 s).
+    Cross-engine switch to indextts2 returns 503 if the worker is down.
     """
-    engine = get_engine()
-    valid_ids = {m.id for m in engine.available_models()}
-    if req.model_id not in valid_ids:
+    global _engine
+
+    idx = _models_index()
+    if req.model_id not in idx:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid model ID. Available: {', '.join(sorted(valid_ids))}",
+            detail=f"Unknown model ID. Available now: {', '.join(sorted(idx))}",
         )
+    target_engine_name = idx[req.model_id]
+    current = get_engine()
 
-    # Check if already loaded
-    if engine.model_id == req.model_id:
-        return SwitchModelResponse(
-            success=True,
-            model=engine.model_id,
-            message="Model already loaded",
-            supports_cloning=engine.supports_cloning,
-            supports_design=engine.supports_design,
-            supports_custom_voice=engine.supports_custom_voice,
-            supports_emotional_cloning=engine.supports_emotional_cloning,
-        )
+    # No-op fast path
+    if current.engine_name == target_engine_name and current.model_id == req.model_id:
+        return _switch_response(current, "Model already loaded")
 
-    # Reload with new model
+    if current.engine_name == target_engine_name:
+        # Same-engine variant switch (existing Qwen3 path).
+        try:
+            current.reload(req.model_id)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to switch model: {e}")
+        return _switch_response(current, f"Switched to {req.model_id}")
+
+    # Cross-engine swap.
+    # Step 1: unload current. Strict VRAM rule - only ONE model loaded at a time.
     try:
-        engine.reload(req.model_id)
-        return SwitchModelResponse(
-            success=True,
-            model=engine.model_id,
-            message=f"Switched to {req.model_id}",
-            supports_cloning=engine.supports_cloning,
-            supports_design=engine.supports_design,
-            supports_custom_voice=engine.supports_custom_voice,
-            supports_emotional_cloning=engine.supports_emotional_cloning,
-        )
+        unload_method = getattr(current, "unload", None)
+        if callable(unload_method):
+            # Remote engines (IndexTTS2RemoteEngine) hand off to the worker.
+            unload_method()
+        elif hasattr(current, "_model") and getattr(current, "_model") is not None:
+            # In-process engines (Qwen3) release VRAM directly.
+            model_ref = current._model
+            current._model = None
+            unload_gpu_model(model_ref)
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to switch model: {e}",
-        )
+        log.warning("unload of current engine %s failed (continuing): %s", current.engine_name, e)
+
+    # Step 2: load new. For remote engine, warmup() does /health + /load.
+    os.environ["TTS_ENGINE"] = target_engine_name
+    get_settings.cache_clear()
+    try:
+        _engine = _ENGINES[target_engine_name]()
+        _engine.warmup()
+    except RuntimeError as e:
+        # IndexTTS2RemoteEngine raises this when the worker is unreachable.
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load {target_engine_name}: {e}")
+
+    return _switch_response(_engine, f"Switched to {target_engine_name}: {req.model_id}")
 
 
 @app.post("/tts")

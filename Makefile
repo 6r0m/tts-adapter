@@ -1,4 +1,4 @@
-.PHONY: help install download-model download-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build rebuild up down logs health shell clean
+.PHONY: help install download-model download-indextts2 run-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build rebuild up down logs health shell clean
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -46,6 +46,14 @@ download-model:
 # Download IndexTTS-2 checkpoints for offline use
 download-indextts2:
 	uv run python scripts/indextts2/download_model.py
+
+# IndexTTS2 worker process - lands in Phase A.1/B (scripts/indextts2/serve.py).
+# Stub fails loudly so users hitting the health gate above don't get a misleading "command not found".
+run-indextts2:
+	@echo "run-indextts2 is not implemented yet."
+	@echo "It lands in Phase A.1 (worker scripts/indextts2/serve.py) + Phase B (vendor/index-tts uv env)."
+	@echo "Track progress: todo/engine_install_and_switch.md"
+	@exit 1
 
 # === LOCAL SERVER ===
 serve:

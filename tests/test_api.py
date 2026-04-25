@@ -1,19 +1,18 @@
 """API tests for TTS adapter.
 
 Run with: uv run pytest tests/test_api.py -v
-Requires running server at localhost:9880
+Tests skip cleanly via the `live_client` fixture (conftest.py) when no
+server is running at localhost:9880.
 """
 
 import pytest
-import httpx
-
-BASE_URL = "http://localhost:9880"
 
 
+# Backwards-compatible alias - existing tests reference `client`. They all need
+# a live server, so route through the skip-on-ConnectError live_client fixture.
 @pytest.fixture
-def client():
-    """HTTP client for API tests."""
-    return httpx.Client(base_url=BASE_URL, timeout=30.0)
+def client(live_client):
+    return live_client
 
 
 class TestHealth:

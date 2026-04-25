@@ -213,3 +213,9 @@ tmp/
 *.wav
 *.mp3
 *.zip
+
+# Model weights (downloaded by `make install-{qwen3,indextts2}`, A.2 default flip)
+models/
+
+# Cloned upstream repos (vendor/index-tts/ for IndexTTS2 worker venv, Phase B)
+vendor/

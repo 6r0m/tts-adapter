@@ -6,7 +6,9 @@
 
 ## Overview
 
-[IndexTTS2](https://github.com/index-tts/index-tts) (Bilibili, Sept 2025) is a zero-shot TTS model with disentangled timbre + emotion conditioning. It's the only adapter engine that combines voice cloning with emotion control. Use it when you need a specific cloned voice expressing a specific emotion (Qwen3-TTS cannot do both at once - see [qwen3 limitation](../qwen3/README.md)).
+[IndexTTS2](https://github.com/index-tts/index-tts) (Bilibili, Sept 2025) is a zero-shot TTS model with disentangled timbre + emotion conditioning.
+
+**Planned use case:** clone a specific voice and apply emotion control (audio / text / 8-dim vector) once the isolated worker lands. Qwen3-TTS cannot do both at once - see the [qwen3 limitation](../qwen3/README.md). Until Phase A.1 + Phase B ship, this engine is not runnable.
 
 | Feature | Supported |
 |---------|:---------:|
@@ -39,6 +41,8 @@ main adapter (qwen env, port 9880)
 
 ## Install (planned, Phase B)
 
+> **Not implemented yet.** Block below describes the target UX once Phase A.1 + Phase B land. Until then, `make run-indextts2` is a stub that exits with a "not implemented" message, and the download script still defaults to `~/.cache/tts-adapter/models/IndexTTS-2/` (Phase A.2 flips that default to repo-local).
+
 ```
 make install-indextts2     # clones upstream, runs uv sync in vendor venv, downloads weights
 ```
@@ -46,7 +50,7 @@ make install-indextts2     # clones upstream, runs uv sync in vendor venv, downl
 This will:
 1. `git clone https://github.com/index-tts/index-tts vendor/index-tts` (idempotent)
 2. `cd vendor/index-tts && uv sync` (creates isolated `.venv`)
-3. Download checkpoints (about 6 GB) to `models/indextts2/IndexTTS-2/`
+3. Download checkpoints (about 6 GB) to `models/indextts2/IndexTTS-2/` (after Phase A.2 flips the default)
 4. Print the `.env` lines to paste
 
 Then in two terminals:
@@ -72,7 +76,7 @@ These vars belong to the worker, not the main adapter. The worker reads them fro
 
 | Var | Default | Description |
 |---|---|---|
-| `TTS_INDEXTTS2_MODEL_DIR` | `./models/indextts2/IndexTTS-2` | Local checkpoint directory |
+| `TTS_INDEXTTS2_MODEL_DIR` | `~/.cache/tts-adapter/models/IndexTTS-2` (today); `./models/indextts2/IndexTTS-2` (after Phase A.2) | Local checkpoint directory |
 | `TTS_INDEXTTS2_CFG_PATH` | `{MODEL_DIR}/config.yaml` | Path to config.yaml |
 | `TTS_INDEXTTS2_USE_FP16` | `true` | FP16 inference (required on RTX 4070 12GB) |
 | `TTS_INDEXTTS2_USE_CUDA_KERNEL` | `false` | Optional CUDA kernel speed path |

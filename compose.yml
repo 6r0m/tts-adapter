@@ -20,6 +20,9 @@ x-common: &common
   volumes:
     # HuggingFace cache for model weights (use host's standard cache)
     - ${HF_CACHE_PATH:-~/.cache/huggingface}:/home/app/.cache/huggingface
+    # Repo-local model weights (downloaded by `make install-{qwen3,indextts2}`).
+    # Same convention as A1111/ComfyUI/llama.cpp - gitignored, easy to nuke.
+    - ./models:/work/models
   env_file:
     - .env
   healthcheck:

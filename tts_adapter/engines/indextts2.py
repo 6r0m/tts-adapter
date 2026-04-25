@@ -1,47 +1,47 @@
-"""IndexTTS2 engine implementation.
+"""IndexTTS2 remote engine - HTTP client for the isolated worker process.
 
-IndexTTS2 (Bilibili, Sept 2025) is a zero-shot TTS model with disentangled
-timbre + emotion conditioning — the only adapter engine that combines voice
-cloning with emotion control. See docs/engines/indextts2/README.md for
-install, capabilities, and emotion modes.
-
-The `indextts` package is NOT on PyPI. Install via the official `uv sync`
-flow inside a cloned `index-tts` repo (see engine README) and either:
-  - point `TTS_INDEXTTS2_REPO_DIR` at that clone (engine adds it to sys.path), OR
-  - install into the same env as the adapter (verify no qwen-tts conflicts first).
+The worker runs in vendor/index-tts/.venv (separate Python env, no shared deps with
+the main adapter) and exposes /health, /load, /unload, /tts/clone. This engine
+just forwards requests over HTTP. See docs/engines/indextts2/README.md for why
+the two-process architecture is required (transformers/torch pin conflicts with
+qwen-tts).
 """
 
 import io
-import os
-import sys
+import logging
 import threading
 from functools import lru_cache
-from pathlib import Path
 
-import soundfile as sf
+import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..audio_utils import bytes_to_tempfile, trim_silence
 from ..contract import ModelInfo
-from ..gpu_utils import unload_gpu_model
+
+log = logging.getLogger(__name__)
 
 _MODEL_ID = "IndexTeam/IndexTTS-2"
-_DEFAULT_MODEL_DIR = str(Path.home() / ".cache" / "tts-adapter" / "models" / "IndexTTS-2")
+_MODEL_INFO = ModelInfo(
+    id=_MODEL_ID,
+    name="IndexTTS-2",
+    variant="Base+Emotion",
+    supports_cloning=True,
+    supports_emotional_cloning=True,
+    supports_design=False,
+    supports_custom_voice=False,
+)
 
 
 class IndexTTS2Settings(BaseSettings):
-    """IndexTTS2 engine settings.
+    """IndexTTS2 remote-engine settings (main-adapter side only).
+
+    Worker-side env vars (MODEL_DIR, USE_FP16, USE_CUDA_KERNEL, ...) belong to
+    the worker process - documented in docs/engines/indextts2/README.md, NOT here.
 
     Env vars (with TTS_INDEXTTS2_ prefix):
-        TTS_INDEXTTS2_MODEL_DIR: Local checkpoint directory
-        TTS_INDEXTTS2_CFG_PATH: Path to config.yaml (default: {model_dir}/config.yaml)
-        TTS_INDEXTTS2_REPO_DIR: Path to cloned index-tts repo (added to sys.path)
-        TTS_INDEXTTS2_USE_FP16: FP16 inference (faster, lower VRAM, small quality loss)
-        TTS_INDEXTTS2_USE_CUDA_KERNEL: Optional CUDA kernel speed path
-        TTS_INDEXTTS2_USE_DEEPSPEED: Optional DeepSpeed inference (may help or hurt)
-        TTS_INDEXTTS2_USE_RANDOM: Random sampling — disabled by default for clone fidelity
-        TTS_INDEXTTS2_TRIM_SILENCE: Trim leading/trailing silence (off by default
-            to preserve emotional breaths/pauses/expressive endings)
+        TTS_INDEXTTS2_URL: Worker URL (default http://localhost:9881)
+        TTS_INDEXTTS2_TIMEOUT: HTTP timeout for /tts/clone in seconds (default 180)
+        TTS_INDEXTTS2_LOAD_TIMEOUT: HTTP timeout for /load in seconds (default 120)
+        TTS_INDEXTTS2_HEALTH_TIMEOUT: HTTP timeout for /health in seconds (default 2)
     """
 
     model_config = SettingsConfigDict(
@@ -51,112 +51,106 @@ class IndexTTS2Settings(BaseSettings):
         extra="ignore",
     )
 
-    model_dir: str = _DEFAULT_MODEL_DIR
-    cfg_path: str | None = None
-    repo_dir: str | None = None
-    use_fp16: bool = True
-    use_cuda_kernel: bool = False
-    use_deepspeed: bool = False
-    use_random: bool = False
-    trim_silence: bool = False
+    url: str = "http://localhost:9881"
+    timeout: float = 180.0
+    load_timeout: float = 120.0
+    health_timeout: float = 2.0
 
 
 @lru_cache
 def get_indextts2_settings() -> IndexTTS2Settings:
-    """Get cached IndexTTS2 settings instance."""
     return IndexTTS2Settings()
 
 
-_INSTALL_HINT = (
-    "IndexTTS2 (`indextts` package) not importable. Install via the official flow:\n"
-    "  git clone https://github.com/index-tts/index-tts && cd index-tts && uv sync\n"
-    "  hf download IndexTeam/IndexTTS-2 --local-dir ~/.cache/tts-adapter/models/IndexTTS-2\n"
-    "Then either install indextts into the adapter env, or set\n"
-    "  TTS_INDEXTTS2_REPO_DIR=/path/to/cloned/index-tts\n"
+_NOT_RUNNING_HINT = (
+    "IndexTTS2 worker not reachable at {url}. Start it with one of:\n"
+    "  make up                # if compose service adapter-tts-indextts2 is enabled\n"
+    "  make run-indextts2     # local two-terminal dev (lands in Phase A.1/B)\n"
     "See docs/engines/indextts2/README.md."
 )
 
 
-class IndexTTS2Engine:
-    """IndexTTS2 — voice cloning with disentangled emotion control.
+class IndexTTS2RemoteEngine:
+    """IndexTTS2 engine that forwards requests to a separate worker process.
 
-    Supports `/tts/clone` only. Single text-to-speech (`synthesize`),
-    batch (`synthesize_batch`), and voice design (`synthesize_design`)
-    raise NotImplementedError — IndexTTS2 has no preset speakers.
+    Holds zero model state in this Python process - the worker owns everything
+    GPU-related. Switching engines via /model/switch calls .unload() on the
+    outgoing engine and .warmup() on the incoming one (which for this engine
+    means POST /unload and POST /load on the worker respectively).
 
-    Thread-safe via a lock for GPU serialization (mirrors Qwen3 pattern).
+    Thread-safe via internal httpx.Client (which is already thread-safe).
     """
 
-    def __init__(
-        self,
-        model_dir: str | None = None,
-        cfg_path: str | None = None,
-        repo_dir: str | None = None,
-        use_fp16: bool | None = None,
-        use_cuda_kernel: bool | None = None,
-        use_deepspeed: bool | None = None,
-        use_random: bool | None = None,
-        trim_silence: bool | None = None,
-    ):
+    def __init__(self, url: str | None = None, timeout: float | None = None):
         s = get_indextts2_settings()
-        self._model_dir = model_dir or s.model_dir
-        self._cfg_path = cfg_path or s.cfg_path or str(Path(self._model_dir) / "config.yaml")
-        self._repo_dir = repo_dir if repo_dir is not None else s.repo_dir
-        self._use_fp16 = s.use_fp16 if use_fp16 is None else use_fp16
-        self._use_cuda_kernel = s.use_cuda_kernel if use_cuda_kernel is None else use_cuda_kernel
-        self._use_deepspeed = s.use_deepspeed if use_deepspeed is None else use_deepspeed
-        self._use_random = s.use_random if use_random is None else use_random
-        self._trim_silence = s.trim_silence if trim_silence is None else trim_silence
+        self._url = (url or s.url).rstrip("/")
+        self._timeout = timeout if timeout is not None else s.timeout
+        self._load_timeout = s.load_timeout
+        self._health_timeout = s.health_timeout
+        # trust_env=False: worker is localhost by default, so don't honor
+        # HTTP_PROXY / HTTPS_PROXY / SOCKS env vars (avoids needing socksio
+        # just to talk to a process on the same machine).
+        self._client: httpx.Client | None = None
+        self._lock = threading.Lock()  # serializes warmup/unload state changes
 
-        self._model = None
-        self._lock = threading.Lock()
+    def _get_client(self) -> httpx.Client:
+        """Lazy client construction so tests can swap it before first use."""
+        if self._client is None:
+            self._client = httpx.Client(timeout=self._timeout, trust_env=False)
+        return self._client
 
-    def _import_indextts(self):
-        """Lazy-import IndexTTS2, optionally adding repo_dir to sys.path."""
-        if self._repo_dir and self._repo_dir not in sys.path:
-            sys.path.insert(0, self._repo_dir)
-        try:
-            from indextts.infer_v2 import IndexTTS2
-        except ImportError as e:
-            raise RuntimeError(_INSTALL_HINT) from e
-        return IndexTTS2
+    # ----- lifecycle -----
 
     def warmup(self) -> None:
-        """Load model into memory.
+        """Verify worker is reachable, then ask it to load the model.
 
-        Constructs IndexTTS2 with explicit local paths — no HuggingFace Hub
-        calls. Works fully offline once `make download-indextts2` has run.
+        Both /health and /load are idempotent on the worker side, so this is
+        safe to call multiple times.
         """
-        if self._model is not None:
-            return
+        if not self._is_healthy(timeout=self._health_timeout):
+            raise RuntimeError(_NOT_RUNNING_HINT.format(url=self._url))
 
-        if not Path(self._cfg_path).exists():
-            raise RuntimeError(
-                f"IndexTTS2 config not found at {self._cfg_path}. "
-                f"Run `make download-indextts2` and verify TTS_INDEXTTS2_MODEL_DIR."
-            )
+        with self._lock:
+            try:
+                resp = self._get_client().post(f"{self._url}/load", timeout=self._load_timeout)
+                resp.raise_for_status()
+            except httpx.HTTPError as e:
+                raise RuntimeError(f"IndexTTS2 worker /load failed: {e}") from e
 
-        IndexTTS2 = self._import_indextts()
-        self._model = IndexTTS2(
-            cfg_path=self._cfg_path,
-            model_dir=self._model_dir,
-            use_fp16=self._use_fp16,
-            use_cuda_kernel=self._use_cuda_kernel,
-            use_deepspeed=self._use_deepspeed,
-        )
+    def unload(self) -> None:
+        """Best-effort: tell the worker to release VRAM.
 
-    def synthesize(self, text: str, language: str = "Auto", speaker: str = "default", instruct: str = "", **kwargs) -> bytes:
+        Used by cross-engine /model/switch before swapping to another engine.
+        Failures are logged and swallowed - if the worker is already gone we're
+        tearing down anyway.
+        """
+        with self._lock:
+            try:
+                self._get_client().post(f"{self._url}/unload", timeout=self._load_timeout)
+            except httpx.HTTPError as e:
+                log.warning("IndexTTS2 worker /unload failed (continuing): %s", e)
+
+    def reload(self, model_id: str) -> None:
+        """No-op alias to warmup() for protocol parity.
+
+        IndexTTS2 has only one model, so model_id is ignored. Variant switching
+        between Qwen3 sub-models doesn't apply here.
+        """
+        del model_id
+        self.warmup()
+
+    # ----- inference -----
+
+    def synthesize(self, *args, **kwargs) -> bytes:
         raise NotImplementedError(
-            "IndexTTS2 has no preset speakers. Use /tts/clone with a reference audio "
-            "(optionally with emotion params), or switch to TTS_ENGINE=qwen3."
+            "IndexTTS2 has no preset speakers. Use /tts/clone with a reference "
+            "audio (optionally with emotion params), or switch to TTS_ENGINE=qwen3."
         )
 
-    def synthesize_batch(self, texts: list[str], language: str = "Auto", speaker: str = "default", instruct: str = "", **kwargs) -> list[bytes]:
-        raise NotImplementedError(
-            "IndexTTS2 batch synthesis not supported. Use /tts/clone per item."
-        )
+    def synthesize_batch(self, *args, **kwargs) -> list[bytes]:
+        raise NotImplementedError("IndexTTS2 batch synthesis not supported. Use /tts/clone per item.")
 
-    def synthesize_design(self, text: str, instruct: str, language: str = "Auto", **kwargs) -> bytes:
+    def synthesize_design(self, *args, **kwargs) -> bytes:
         raise NotImplementedError(
             "IndexTTS2 does not support voice design. Use TTS_ENGINE=qwen3 + VoiceDesign model."
         )
@@ -174,70 +168,60 @@ class IndexTTS2Engine:
         emotion_alpha: float = 1.0,
         **kwargs,
     ) -> bytes:
-        """Clone voice and optionally apply emotion (audio / text / 8-dim vector)."""
-        if self._model is None:
-            self.warmup()
+        """Forward /tts/clone to the worker as multipart form."""
+        ref_bytes = _coerce_to_bytes(reference_audio)
 
-        # Speaker reference: bytes -> tempfile, or pass path through.
-        # Emotion reference (if bytes): also via tempfile, otherwise None or path.
-        # Use ExitStack-style nested context managers.
-        from contextlib import ExitStack
+        data: dict[str, str] = {
+            "text": text,
+            "language": language,
+            "emotion_alpha": str(emotion_alpha),
+        }
+        if reference_text:
+            data["reference_text"] = reference_text
+        if emotion_text:
+            data["emotion_text"] = emotion_text
+        if emotion_vector is not None:
+            data["emotion_vector"] = ",".join(str(x) for x in emotion_vector)
+        # Generation kwargs that the route already filtered through _collect_gen_kwargs.
+        for k in ("temperature", "top_k", "top_p", "repetition_penalty", "max_new_tokens"):
+            if k in kwargs and kwargs[k] is not None:
+                data[k] = str(kwargs[k])
 
-        with ExitStack() as stack:
-            if isinstance(reference_audio, bytes):
-                spk_path = stack.enter_context(bytes_to_tempfile(reference_audio, suffix=".wav"))
-            else:
-                spk_path = reference_audio
+        files: list[tuple[str, tuple[str, bytes, str]]] = [
+            ("reference_audio", ("ref.wav", ref_bytes, "audio/wav")),
+        ]
+        if emotion_audio is not None:
+            emo_bytes = _coerce_to_bytes(emotion_audio)
+            files.append(("emotion_audio", ("emo.wav", emo_bytes, "audio/wav")))
 
-            emo_path: str | None
-            if isinstance(emotion_audio, bytes):
-                emo_path = stack.enter_context(bytes_to_tempfile(emotion_audio, suffix=".wav"))
-            elif isinstance(emotion_audio, str):
-                emo_path = emotion_audio
-            else:
-                emo_path = None
+        try:
+            resp = self._get_client().post(
+                f"{self._url}/tts/clone",
+                data=data,
+                files=files,
+                timeout=self._timeout,
+            )
+        except httpx.ConnectError as e:
+            raise RuntimeError(_NOT_RUNNING_HINT.format(url=self._url)) from e
 
-            out_fd, out_path = _mkstemp_wav()
-            os.close(out_fd)
-            stack.callback(_silent_unlink, out_path)
+        if resp.status_code >= 400:
+            # Surface the worker's error verbatim so the user sees the real cause.
+            try:
+                detail = resp.json().get("detail", resp.text)
+            except Exception:
+                detail = resp.text
+            raise RuntimeError(f"IndexTTS2 worker returned {resp.status_code}: {detail}")
 
-            with self._lock:
-                self._model.infer(
-                    spk_audio_prompt=spk_path,
-                    text=text,
-                    output_path=out_path,
-                    emo_audio_prompt=emo_path,
-                    emo_text=emotion_text,
-                    use_emo_text=emotion_text is not None,
-                    emo_vector=emotion_vector,
-                    emo_alpha=emotion_alpha,
-                    use_random=self._use_random,
-                )
+        return resp.content
 
-            wav, sr = sf.read(out_path)
+    # ----- protocol metadata -----
 
-        if self._trim_silence:
-            wav = trim_silence(wav, sr)
-        buf = io.BytesIO()
-        sf.write(buf, wav, sr, format="WAV")
-        return buf.getvalue()
-
-    def reload(self, model_id: str) -> None:
-        """Reload from a different model directory.
-
-        For IndexTTS2 there's effectively one model — `model_id` is treated
-        as a local checkpoint directory path here.
-        """
-        with self._lock:
-            if self._model is not None:
-                model_ref = self._model
-                self._model = None
-                unload_gpu_model(model_ref)
-
-            self._model_dir = model_id
-            self._cfg_path = str(Path(self._model_dir) / "config.yaml")
-
-        self.warmup()
+    def _is_healthy(self, timeout: float | None = None) -> bool:
+        try:
+            resp = self._get_client().get(f"{self._url}/health", timeout=timeout or self._health_timeout)
+            return resp.status_code == 200
+        except httpx.HTTPError:
+            return False
 
     @property
     def supports_cloning(self) -> bool:
@@ -256,17 +240,12 @@ class IndexTTS2Engine:
         return True
 
     def available_models(self) -> list[ModelInfo]:
-        return [
-            ModelInfo(
-                id=_MODEL_ID,
-                name="IndexTTS-2",
-                variant="Base+Emotion",
-                supports_cloning=True,
-                supports_emotional_cloning=True,
-                supports_design=False,
-                supports_custom_voice=False,
-            )
-        ]
+        """Return the single IndexTTS-2 entry, but only if the worker is reachable.
+
+        That way GET /models naturally filters out a dead worker without any
+        engine-name branching in the route.
+        """
+        return [_MODEL_INFO] if self._is_healthy() else []
 
     @property
     def engine_name(self) -> str:
@@ -278,17 +257,13 @@ class IndexTTS2Engine:
 
     @property
     def device(self) -> str:
-        """GPU is selected via CUDA_VISIBLE_DEVICES — upstream constructor takes no device arg."""
-        return os.environ.get("CUDA_VISIBLE_DEVICES", "cuda:0")
+        """Worker owns the GPU; surface its URL as a stand-in."""
+        return self._url
 
 
-def _mkstemp_wav():
-    import tempfile
-    return tempfile.mkstemp(suffix=".wav")
-
-
-def _silent_unlink(path: str) -> None:
-    try:
-        os.unlink(path)
-    except FileNotFoundError:
-        pass
+def _coerce_to_bytes(audio: str | bytes) -> bytes:
+    """Accept either raw WAV bytes or a path to a WAV file."""
+    if isinstance(audio, bytes):
+        return audio
+    with open(audio, "rb") as f:
+        return f.read()

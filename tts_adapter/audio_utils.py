@@ -1,6 +1,6 @@
 """Audio shape utilities shared across TTS engines.
 
-Pure functions — no engine state, no GPU calls. Engines compose these
+Pure functions - no engine state, no GPU calls. Engines compose these
 helpers instead of duplicating tempfile / silence-trim logic.
 """
 

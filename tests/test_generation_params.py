@@ -1,23 +1,21 @@
 """Tests for generation parameters passthrough.
 
 Run with: uv run pytest tests/test_generation_params.py -v
-Integration tests (TestGenerationSettings*) require running server at localhost:9880.
+Integration tests (TestGenerationSettings*) skip cleanly via the `live_client`
+fixture (conftest.py) when no server is running at localhost:9880.
 Unit tests (TestGenerationSettingsUnit) run without a server.
 """
 
 import pytest
-import httpx
 from pydantic import ValidationError
 
 from tts_adapter.contract import GenerationSettings, TTSRequest
 
-BASE_URL = "http://localhost:9880"
 
-
+# Backwards-compatible alias for existing tests that reference `client`.
 @pytest.fixture
-def client():
-    """HTTP client for API tests."""
-    return httpx.Client(base_url=BASE_URL, timeout=30.0)
+def client(live_client):
+    return live_client
 
 
 class TestGenerationSettingsContract:

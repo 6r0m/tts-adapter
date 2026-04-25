@@ -9,6 +9,28 @@
 
 ---
 
+## KISS happy path (end-state UX, post-review)
+
+User-confirmed scope for the final shape (drives all phase deltas below):
+
+```
+make install-qwen3       # one-time
+make install-indextts2   # one-time
+
+make up                  # ONE command. Brings up:
+                         #   adapter-tts            on :9880  (main API + Qwen3 in-process)
+                         #   adapter-tts-indextts2  on :9881  (worker, COLD - no model loaded yet)
+                         # Worker only included if models/indextts2/IndexTTS-2/ exists.
+                         # Default engine (TTS_ENGINE in .env) loads its model on startup, same as today.
+
+# Web UI:
+#   - Model dropdown shows engines whose worker is reachable (filtered by /models)
+#   - Switch button calls /model/switch -> blocks with spinner ~30-60s -> success or 503 with hint
+#   - Switch implementation = same "unload current, load new" pattern we already use for Qwen3 variants
+```
+
+VRAM rule: only ONE model loaded at a time across both processes (4070 12GB constraint). The worker stays cold until activated; on switch back to Qwen3, worker `/unload` releases its VRAM before Qwen3 reloads.
+
 ## ARCHITECTURE DECISION (post-review): IndexTTS2 runs as a separate process/service
 
 **Final answer: Option C is the only solid architecture. Option A is a probe. Option B is a trap.**
@@ -103,10 +125,11 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 
 ## Out of scope
 
-- Auto-editing `.env` (print + ask user to paste  -  safer than upsert).
-- Loading both engine workers simultaneously on one GPU (VRAM doesn't allow on 4070 12 GB  -  operator stops one before starting the other).
-- Auto-managing the IndexTTS2 worker lifecycle from the main adapter (operator runs `make run-indextts2` separately, same as `make serve`).
-- Two-Docker-services orchestration (deferred  -  `compose.yml` can grow a second service later, but local-dev path uses two terminals).
+- Auto-editing `.env` (print + ask user to paste - safer than upsert).
+- Loading both engine workers' models simultaneously on one GPU (VRAM doesn't allow on 4070 12 GB - "current loaded" state migrates between services on switch).
+- Auto-managing the IndexTTS2 worker container lifecycle from the main adapter (compose brings it up via `make up`; the main adapter only sends `/load`/`/unload` to it).
+- Auto-unload after N seconds of idle (operator-driven via `/model/switch` only; revisit if users actually request it).
+- Pre-warming the worker on `make up` (worker starts cold, warms on first `/load` or first `/tts/clone`).
 
 ---
 
@@ -157,7 +180,14 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
   - Drop the "Install indextts into the adapter env" path and the `TTS_INDEXTTS2_REPO_DIR` mention.
   - Keep the emotion-mode contract, alpha ranges, vector ordering, Russian/4070 caveats  -  these survive the rewrite.
 - [ ] **No code rewrites yet**  -  `tts_adapter/engines/indextts2.py` is left in place for now. Phase A.1 rewrites it. Phase 0 is purely about stopping the docs/CLI from advertising the rejected design.
-- [ ] Verify: `git grep TTS_INDEXTTS2_REPO_DIR` returns ONLY hits inside the engine source file (which Phase A.1 will rewrite). All docs/env/Makefile mentions are gone.
+- [ ] Verify (todos intentionally still mention `TTS_INDEXTTS2_REPO_DIR` to document the cleanup, so exclude them from the check). Use `:^` exclude pathspec - the `:!` shorthand can be eaten by Bash history expansion:
+  ```bash
+  git grep -n TTS_INDEXTTS2_REPO_DIR -- . ':^todo/*'
+  # or equivalently:
+  git grep -n TTS_INDEXTTS2_REPO_DIR -- . ':(exclude)todo/*'
+  ```
+  **After Phase 0:** only `tts_adapter/engines/indextts2.py` (Phase A.1's rewrite target).
+  **After Phase A.1:** no output at all.
 
 ## Phase A: IndexTTS2 isolation refactor + repo-local weights convention
 
@@ -168,20 +198,28 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 - [ ] **Reject the in-process design.** Strip [tts_adapter/engines/indextts2.py](../tts_adapter/engines/indextts2.py) of the `from indextts.infer_v2 import IndexTTS2` import path, the `repo_dir` / `sys.path` injection, and the direct `self._model.infer(...)` call. The class becomes `IndexTTS2RemoteEngine`.
 - [ ] **`IndexTTS2RemoteEngine`** (new contents of `tts_adapter/engines/indextts2.py`):
   - HTTP client over `httpx` (already a dep via fastapi/httpx test stack).
-  - Settings via `TTS_INDEXTTS2_URL` (default `http://localhost:9881`), `TTS_INDEXTTS2_TIMEOUT` (default 180 s).
+  - Settings via `TTS_INDEXTTS2_URL` (default `http://localhost:9881`), `TTS_INDEXTTS2_TIMEOUT` (default 180 s), `TTS_INDEXTTS2_LOAD_TIMEOUT` (default 120 s for `/load` calls).
   - `synthesize_clone(...)` POSTs to `{URL}/tts/clone` as multipart form (mirrors the main adapter's contract); returns the WAV bytes.
-  - `warmup()` does a lightweight `GET {URL}/health` with a single retry  -  does NOT load any model itself.
-  - `available_models()` returns the same single `ModelInfo(id="IndexTeam/IndexTTS-2", ...)` constant.
-  - `engine_name = "indextts2"`, `supports_emotional_cloning = True`  -  unchanged from current.
+  - `warmup()` does:
+    1. `GET {URL}/health` with a single retry -> raises `RuntimeError` with actionable hint ("worker not running, run `make run-indextts2` or `make up`") if unreachable.
+    2. `POST {URL}/load` to warm the model. Idempotent on the worker side. Uses `LOAD_TIMEOUT`.
+  - **New method `unload()`** -> `POST {URL}/unload`. Called by the cross-engine `/model/switch` path before swapping engine ref. Best-effort: log + continue if worker is unreachable (we're tearing down anyway).
+  - `available_models()` returns the same single `ModelInfo(id="IndexTeam/IndexTTS-2", ...)` constant - **but only if `GET /health` succeeded at last check**, otherwise returns `[]`. That way `/models` filters out a dead worker without engine-name branching in the route.
+  - `engine_name = "indextts2"`, `supports_emotional_cloning = True` - unchanged from current.
   - `synthesize / synthesize_batch / synthesize_design` keep their `NotImplementedError` semantics.
-  - **Settings `TTS_INDEXTTS2_MODEL_DIR`, `TTS_INDEXTTS2_USE_FP16`, etc. are no longer used by the engine**  -  they belong to the worker now. Remove them from `IndexTTS2Settings` and document them on the worker side.
+  - **Settings `TTS_INDEXTTS2_MODEL_DIR`, `TTS_INDEXTTS2_USE_FP16`, etc. are no longer used by the engine** - they belong to the worker now. Remove them from `IndexTTS2Settings` and document them on the worker side.
 - [ ] **New file: `scripts/indextts2/serve.py`**  -  minimal FastAPI app, runs in `vendor/index-tts/.venv`:
-  - Single endpoint `/tts/clone` matching the main adapter's form contract (`text`, `reference_audio`, `emotion_audio`, `emotion_text`, `emotion_vector`, `emotion_alpha`).
-  - `/health` returning `{ok: true, model_dir: ..., supports_emotional_cloning: true}`.
+  - Endpoints (KISS - same surface shape as the main adapter, no extras):
+    - `GET /health` -> `{ok: true, model_loaded: bool, model_dir: ..., supports_emotional_cloning: true}`. Cheap, no model touch.
+    - `POST /load` -> warmup (construct `IndexTTS2(...)`). Idempotent: no-op if already loaded.
+    - `POST /unload` -> release VRAM (drop ref + `gpu_utils.unload_gpu_model`). Idempotent.
+    - `POST /tts/clone` -> the actual generation. **Lazy-loads on first call** if `model_loaded` is false (so users who never explicitly `/load` still get working output - same KISS pattern as the main adapter's lifespan-warmup-as-optimization).
+  - Form contract for `/tts/clone` matches the main adapter exactly: `text`, `reference_audio`, `reference_text`, `emotion_audio`, `emotion_text`, `emotion_vector`, `emotion_alpha`, generation kwargs.
   - Imports `indextts.infer_v2.IndexTTS2` (available in vendor venv).
-  - Reuses `tts_adapter.audio_utils.bytes_to_tempfile` + `trim_silence` via `sys.path.insert(0, <repo root>)`  -  these helpers have zero internal `tts_adapter` deps so cross-venv reuse is safe (verify by reading [tts_adapter/audio_utils.py](../tts_adapter/audio_utils.py) before relying on it).
-  - All worker-side settings via `TTS_INDEXTTS2_*` env: `MODEL_DIR`, `CFG_PATH`, `USE_FP16`, `USE_CUDA_KERNEL`, `USE_DEEPSPEED`, `USE_RANDOM`, `TRIM_SILENCE`. Defaults same as today.
+  - Reuses `tts_adapter.audio_utils.bytes_to_tempfile` + `trim_silence` + `gpu_utils.unload_gpu_model` via `sys.path.insert(0, <repo root>)` - these helpers have zero internal `tts_adapter` deps so cross-venv reuse is safe (verify by reading [tts_adapter/audio_utils.py](../tts_adapter/audio_utils.py) and [tts_adapter/gpu_utils.py](../tts_adapter/gpu_utils.py) before relying on it).
+  - All worker-side settings via `TTS_INDEXTTS2_*` env: `MODEL_DIR`, `CFG_PATH`, `USE_FP16`, `USE_CUDA_KERNEL`, `USE_DEEPSPEED`, `USE_RANDOM`, `TRIM_SILENCE`, `PORT`. Defaults same as today.
   - Listens on `TTS_INDEXTTS2_PORT` (default 9881).
+  - **Startup behavior:** worker comes up COLD by default. No model load on container start. `make up` therefore does not OOM even when both services are running.
 - [ ] **`tts_adapter/engines/__init__.py`**  -  registration unchanged: `_ENGINES["indextts2"] = IndexTTS2RemoteEngine`. Same engine name, same protocol, different implementation.
 - [ ] **Tests**  -  keep the protocol-conformance assertion (`isinstance(e, TTSEngine)`) for the remote engine. Add a unit test that mocks `httpx.Client.post` and verifies the form fields are wired correctly. The integration tests requiring a live worker get skipped via the `live_client` fixture defined in the Verification section (skips on `httpx.ConnectError`, never raises).
 - [ ] **Docs**  -  rewrite [docs/engines/indextts2/README.md](../docs/engines/indextts2/README.md) for the two-process model: install / run worker / configure main adapter URL.
@@ -296,7 +334,7 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
       return ModelsResponse(current=engine.model_id, available=available)
   ```
   Note: instantiating engines for metadata is cheap  -  no `warmup()` is called and `__init__` doesn't load the model.
-- [ ] Extend `/model/switch`  -  handles both same-engine variant switch (Qwen3) and cross-engine swap (Qwen3 <-> IndexTTS2-remote):
+- [ ] Extend `/model/switch` - handles both same-engine variant switch (Qwen3) and cross-engine swap (Qwen3 <-> IndexTTS2-remote). **KISS: same "unload current, load new" pattern we already use for Qwen3 variants, just spans two processes for the cross-engine case.**
   ```python
   @app.post("/model/switch")
   def switch_model(req):
@@ -308,46 +346,144 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
       current = get_engine()
 
       if target == current.engine_name:
-          # Same-engine variant switch (e.g. Qwen3 CustomVoice <-> Base)
+          # Same-engine variant switch (e.g. Qwen3 CustomVoice <-> Base) - existing path
           if current.model_id == req.model_id:
               return SwitchModelResponse(message="Model already loaded", ...)
           current.reload(req.model_id)
       else:
-          # Cross-engine swap.
-          # NOTE: With remote IndexTTS2, the main adapter only releases
-          # in-process GPU memory if the *current* engine holds it (Qwen3).
-          # Switching TO indextts2 simply replaces the engine reference;
-          # the IndexTTS2 worker process is NOT started/stopped here  -  the
-          # operator runs `make run-indextts2` in a separate terminal.
-          if hasattr(current, "_model") and current._model is not None:
+          # Cross-engine swap. Strict VRAM rule: only ONE model loaded at a time.
+          # Step 1: UNLOAD CURRENT.
+          #   - If current is Qwen3 (in-process): drop ref + gpu_utils.unload_gpu_model
+          #   - If current is IndexTTS2RemoteEngine: POST {URL}/unload (best-effort, log on failure)
+          if isinstance(current, IndexTTS2RemoteEngine):
+              try:
+                  current.unload()  # POST {URL}/unload, logs and continues if worker is unreachable
+              except Exception as e:
+                  log.warning("worker /unload failed (continuing): %s", e)
+          elif hasattr(current, "_model") and current._model is not None:
               model_ref = current._model
               current._model = None
               unload_gpu_model(model_ref)
+
+          # Step 2: LOAD NEW.
           os.environ["TTS_ENGINE"] = target
           get_settings.cache_clear()
           _engine = _ENGINES[target]()
-          _engine.warmup()  # for remote engine: pings worker /health
+          try:
+              _engine.warmup()  # Qwen3: loads in-process; remote: GET /health + POST /load
+          except RuntimeError as e:
+              raise HTTPException(503, f"Failed to load {target}: {e}")
 
       e = get_engine()
       return SwitchModelResponse(success=True, model=e.model_id, ...)
   ```
-- [ ] Cross-engine swap caveats  -  surface in API docs + response message:
+  Note: the `isinstance(current, IndexTTS2RemoteEngine)` check is the single intentional concrete-class import in routes.py for the unload step. If we want to avoid even that, the cleaner alternative is an optional protocol method `unload(self) -> None` with a default no-op implementation - decide during implementation whichever is less code. Don't pre-bikeshed.
+- [ ] Cross-engine swap caveats - surface in API docs + response message:
   - Server briefly unavailable during reload (same as today's variant switch).
-  - **Switching to indextts2 requires the worker process to already be running** (`make run-indextts2`). Switch returns 503 if `IndexTTS2RemoteEngine.warmup()`'s health-ping fails.
+  - **Switching to indextts2 requires the worker container to be up** (started by `make up` when `models/indextts2/IndexTTS-2/` exists). Switch returns 503 if `IndexTTS2RemoteEngine.warmup()`'s `/health` or `/load` fails. Error message points the user at `make up` / `make run-indextts2`.
+  - First switch to indextts2 is slow (~30-60 s for cold worker `/load`); subsequent switches back are slow only if Qwen3 needs to re-warm.
   - In-flight requests on the old engine may collide.
-  - Runtime swap does NOT persist across restart  -  permanent change still requires `.env` edit.
+  - Runtime swap does NOT persist across restart - permanent change still requires `.env` edit.
 - [ ] Tests in `tests/test_engine_switch.py` (new file):
   - Unit: `_models_index()` returns expected ids across both engines.
   - Unit: `IndexTTS2RemoteEngine` with mocked `httpx` -> verify form-field wiring.
   - Integration (skip if not both engines available): switch qwen3->indextts2->qwen3, verify `/health.engine` updates.
   - Integration (skip if worker not running): switch to indextts2 with no worker -> expect 503 with actionable error message.
 
-## Phase D: Web UI (follow-on  -  split if needed)
+## Phase D: Web UI
 
 - [ ] [tts_adapter/web/templates_body.py](../tts_adapter/web/templates_body.py): on the Voice Clone tab, render emotion controls (audio upload / text / 8-float vector + alpha slider) **conditional on `supports_emotional_cloning`** from `/health`.
 - [ ] [tts_adapter/web/templates_script.py](../tts_adapter/web/templates_script.py): the existing periodic `/health` poller (see [todo/multi_client_sync.md](multi_client_sync.md) for context) toggles the emotion controls visibility when the flag flips after a model switch.
-- [ ] Model dropdown: replace the current Qwen3-variants-only list with the union from `/models`. Include the engine name in each option's label (e.g. `[qwen3] Base 1.7B`, `[indextts2] IndexTTS-2`). Switch button calls the same `/model/switch`.
+- [ ] Model dropdown:
+  - Source: `GET /models` (which already filters out engines whose worker is unreachable, see Phase A.1 `IndexTTS2RemoteEngine.available_models()`). User only sees switchable options.
+  - Label format: `[qwen3] Base 1.7B`, `[indextts2] IndexTTS-2`. Switch button calls the same `/model/switch` we already use.
+  - Switch UX: button shows a spinner and disables until response. Same affordance as today's existing model switch (which already takes ~2 min for Qwen3 variant reloads). Show estimated wait copy: "Switching engine, this can take up to 60 seconds..."
+  - Failure path: 503 from `/model/switch` -> reuse the existing model-switch error toast / message component. No new error UI.
 - [ ] [tts_adapter/web/templates_i18n.py](../tts_adapter/web/templates_i18n.py): add labels for emotion-mode dropdown, alpha slider, and the cross-engine switch warning ("This will unload the current engine and load...").
+
+## Phase E: Docker happy path (`make up` brings up everything that's installed)
+
+- [ ] **`Dockerfile.indextts2`** - new image for the worker process:
+  - Base: same `nvidia/cuda` runtime as the main `Dockerfile`.
+  - Multi-stage: clones `vendor/index-tts` at build time (or expects it bind-mounted), runs `uv sync` inside, copies `scripts/indextts2/serve.py` + `tts_adapter/audio_utils.py` + `tts_adapter/gpu_utils.py` (the only adapter modules the worker needs).
+  - Healthcheck: `curl -f http://localhost:9881/health`.
+  - CMD: `python scripts/indextts2/serve.py`.
+- [ ] **`compose.yml` updates** - add the worker as a profile-gated service:
+  ```yaml
+  services:
+    adapter-tts:
+      <<: *common
+      # ...existing...
+
+    adapter-tts-indextts2:
+      <<: *common
+      container_name: adapter-tts-indextts2
+      profiles: ["indextts2"]
+      pull_policy: missing
+      image: ${CI_REGISTRY_IMAGE:-tts}/adapter-tts-indextts2:${CI_COMMIT_REF_SLUG:-latest}-${CI_PIPELINE_ID:-local}
+      build:
+        context: .
+        dockerfile: Dockerfile.indextts2
+      ports:
+        - "${TTS_INDEXTTS2_PORT:-9881}:9881"
+      volumes:
+        - ./models/indextts2:/work/models/indextts2
+        - ./vendor/index-tts:/work/vendor/index-tts:ro  # optional, for live-edit during dev
+      deploy:
+        resources:
+          reservations:
+            devices:
+              - driver: nvidia
+                count: 1
+                capabilities: [gpu]
+  ```
+- [ ] **`make up` auto-detects what's installed** - profile activated by Makefile based on host filesystem check (compose itself can't conditionally include services on host-side state, so the make wrapper does it):
+  ```make
+  up:
+      @profiles="--profile gpu"; \
+      if [ -d models/indextts2/IndexTTS-2 ]; then \
+          profiles="$$profiles --profile indextts2"; \
+          echo "Detected models/indextts2/IndexTTS-2/ - including indextts2 worker"; \
+      else \
+          echo "models/indextts2/IndexTTS-2/ not found - skipping indextts2 worker (run 'make install-indextts2' to enable)"; \
+      fi; \
+      $(DOCKER_COMPOSE) $$profiles up -d --no-build
+      @sleep 2
+      @echo "Started. Run: make health"
+  ```
+- [ ] **`make build-indextts2`** - explicit target for first-time build of the worker image. Symmetric to existing `make build`. Add a `make build-all` that builds both.
+- [ ] **`make health` reports both** - extend to ping `:9880/health` AND `:9881/health` (if the indextts2 service is running). Show per-service status.
+- [ ] **`make logs`** - parametrize to follow either or both: `make logs` (main), `make logs indextts2` (worker), `make logs all` (both with prefix).
+- [ ] **README Quick Start** - Docker happy path section becomes:
+  ```bash
+  make install-qwen3       # one-time (~4.3 GB)
+  make install-indextts2   # one-time (~6 GB), optional
+  make build               # build main image (one-time, online)
+  make build-indextts2     # build worker image (one-time, online; only if you ran install-indextts2)
+  make up                  # starts everything that's installed
+  ```
+
+## Phase E.1: Phase E verification
+
+- [ ] **Both engines present:**
+  ```bash
+  make install-qwen3 && make install-indextts2 && make build-all && make up
+  curl http://localhost:9880/models                                  # union of both engines
+  curl -X POST http://localhost:9880/model/switch -d '{"model_id":"IndexTeam/IndexTTS-2"}'
+  curl http://localhost:9880/health                                   # engine: indextts2
+  ```
+- [ ] **Only Qwen3 present** (skip `make install-indextts2` and `make build-indextts2`):
+  ```bash
+  make install-qwen3 && make build && make up
+  # Make output should explicitly say "indextts2 not installed - skipping worker"
+  curl http://localhost:9880/models                                  # only Qwen3 entries
+  ```
+- [ ] **Worker died after `make up`** (kill container manually):
+  ```bash
+  docker stop adapter-tts-indextts2
+  curl http://localhost:9880/models                                  # IndexTTS-2 absent (engine.available_models filters it)
+  curl -X POST http://localhost:9880/model/switch -d '{"model_id":"IndexTeam/IndexTTS-2"}'  # 400 Unknown model
+  ```
 
 ## Verification
 
@@ -409,10 +545,10 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
        -d '{"model_id":"Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"}'
   curl http://localhost:9880/health   # back to qwen3
   ```
-- [ ] **Switch with no worker -> 503**: stop `run-indextts2`, then attempt the switch  -  expect a 503 with a hint to start the worker.
+- [ ] **Switch with no worker -> 503**: stop `run-indextts2`, then attempt the switch - expect a 503 with a hint to start the worker.
 - [ ] **Legacy fallback warning**: set `TTS_*_MODEL_PATH=~/.cache/tts-adapter/...`, start server, verify ONE warning line at startup, NO per-request warnings.
 - [ ] **Regression**: existing 19 unit tests still pass; existing Qwen3 CLI (`make tts-clone`) unchanged; the in-process IndexTTS2 unit tests get rewritten to mock httpx.
-- [ ] **Docker happy path**  -  **deferred**. Requires a `Dockerfile.indextts2` + a second compose service `adapter-tts-indextts2` + healthcheck + volume mount alignment. Local two-terminal worker is the v1 happy path. Re-enable Docker verification once that scaffolding lands as a follow-up todo.
+- [ ] **Docker happy path** - covered by Phase E.1 (no longer deferred).
 
 ---
 
@@ -422,20 +558,27 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 - **Do not auto-edit `.env`**  -  print + paste only.
 - **Do not silently keep `~/.cache/tts-adapter/` forever**  -  warn once at startup; remove in next minor.
 - **Do not load both engine workers simultaneously**  -  VRAM doesn't allow on 4070 12 GB.
-- **Do not auto-manage the IndexTTS2 worker process from the main adapter**  -  operator runs `make run-indextts2`. Switching to indextts2 with no worker returns 503, not "auto-start."
+- **Do not auto-manage the IndexTTS2 worker container/process from the main adapter** - the worker is brought up by `make up` (Docker) or `make run-indextts2` (local). Switching to indextts2 with no worker returns 503, not "auto-start."
+- **Do not pre-warm both engines on `make up`** - VRAM doesn't allow it. Worker starts COLD and warms only on `/load` (or first `/tts/clone`).
+- **Do not auto-unload-on-idle** - operator-driven only via `/model/switch`. Add idle unload later if real users complain.
+- **Do not duplicate worker model state in main adapter** - `IndexTTS2RemoteEngine` only knows the URL; "is the worker loaded?" comes from `GET /health`'s `model_loaded` flag, never cached on the engine side.
 - **Do not split the engine swap into a new endpoint**  -  `/model/switch` handles both same-engine and cross-engine.
 - **Do not introduce a `/engine/switch` endpoint**  -  redundant with the unified `/model/switch`.
 - **Do not use the positional-arg Make pattern (`make install indextts`)** for engine targets  -  hyphenated `make install-indextts2` is canonical, `install-indextts` is the alias only.
 
 ## Execution order
 
-1. **Phase 0**  -  architecture-drift cleanup. **BLOCKING**. After this, the repo no longer advertises the rejected in-process design.
-2. **Phase A.1**  -  IndexTTS2 isolation refactor (engine becomes remote client, new worker `serve.py`). Largest blast radius  -  verify in isolation before A.2.
-3. **Test-infra fix**  -  `live_client` fixture + tightened upload/validation tests (can land in the same PR as A.1 since both touch the test layer).
-4. **Phase A.2**  -  `models/<engine>/<name>/` + `vendor/` repo-local convention + legacy-fallback warning.
-5. **Phase B**  -  `make install-{qwen3,indextts2}` + `make run-indextts2`.
-6. **Phase B.5**  -  One-shot Option-A probe to document the conflict in `docs/engines/indextts2/README.md`.
-7. **Phase C**  -  Unified `/model/switch` (cross-engine). Depends on A.1 (final engine shape).
-8. **Phase D**  -  Web UI: emotion controls + cross-engine model dropdown.
+1. **Phase 0** - architecture-drift cleanup. **DONE** in the current session.
+2. **Phase A.1** - IndexTTS2 isolation refactor: engine becomes `IndexTTS2RemoteEngine`, new worker `serve.py` with `/health` + `/load` + `/unload` + `/tts/clone` (lazy first-request load). Largest blast radius.
+3. **Test-infra fix** - `live_client` fixture + tightened upload/validation tests (can land in the same PR as A.1).
+4. **Phase A.2** - `models/<engine>/<name>/` + `vendor/` repo-local convention + legacy-fallback warning.
+5. **Phase B** - `make install-{qwen3,indextts2}` + `make run-indextts2`.
+6. **Phase B.5** - One-shot Option-A probe to document the conflict in `docs/engines/indextts2/README.md`.
+7. **Phase C** - Unified `/model/switch` (cross-engine swap orchestrates worker `/unload` and `/load`). Depends on A.1.
+8. **Phase D** - Web UI: emotion controls + cross-engine model dropdown + spinner.
+9. **Phase E** - Docker happy path: `Dockerfile.indextts2`, second compose service with `profiles: ["indextts2"]`, `make up` auto-detects via Makefile profile flag. Depends on A.1 (worker exists) and B (vendor populated).
+10. **Phase E.1** - Docker verification (both engines, qwen3-only, worker-died scenarios).
 
-**Hard rule:** do **not** start Phase C, B, or any feature work until Phase 0 lands. Otherwise we're polishing on top of a contradiction.
+**Hard rules:**
+- Phase 0 is done. Do NOT start D before A.1+C; do NOT start E before B.
+- Phases B, C, D, E.1 can land in separate PRs; A.1 + test-infra fix land together.

@@ -2,14 +2,14 @@
 
 from ..config import get_settings
 from ..engine import TTSEngine
-from .indextts2 import IndexTTS2Engine
+from .indextts2 import IndexTTS2RemoteEngine
 from .qwen3 import Qwen3Engine
 
-__all__ = ["IndexTTS2Engine", "Qwen3Engine", "create_engine"]
+__all__ = ["IndexTTS2RemoteEngine", "Qwen3Engine", "create_engine"]
 
 _ENGINES: dict[str, type] = {
     "qwen3": Qwen3Engine,
-    "indextts2": IndexTTS2Engine,
+    "indextts2": IndexTTS2RemoteEngine,
 }
 
 

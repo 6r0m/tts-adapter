@@ -16,7 +16,11 @@ import sys
 from pathlib import Path
 
 DEFAULT_MODEL = "IndexTeam/IndexTTS-2"
-CACHE_DIR = Path.home() / ".cache" / "tts-adapter" / "models"
+# Repo-local default (mirrors A1111/ComfyUI/llama.cpp). The legacy
+# ~/.cache/tts-adapter/models/ is still accepted via --dir or by setting
+# TTS_INDEXTTS2_MODEL_DIR directly; it triggers a one-shot legacy warning at
+# server startup (Phase A.2d).
+CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "models" / "indextts2"
 
 
 def main() -> int:
@@ -64,8 +68,9 @@ def main() -> int:
     print("Download complete!")
     print()
     print("Add to your .env:")
-    print(f"  TTS_INDEXTTS2_MODEL_DIR={local_dir}")
-    print("  TTS_ENGINE=indextts2")
+    print(f"  TTS_INDEXTTS2_MODEL_DIR={local_dir}    # worker-side env")
+    print("  TTS_ENGINE=indextts2                   # main-adapter env")
+    print("  TTS_INDEXTTS2_URL=http://localhost:9881  # main-adapter env")
     print()
     print("Then set HF_HUB_OFFLINE=1 for fully offline operation:")
     print("  HF_HUB_OFFLINE=1")
