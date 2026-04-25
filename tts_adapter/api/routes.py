@@ -11,7 +11,6 @@ from fastapi.responses import Response
 from ..config import get_settings
 from ..contract import (
     HealthResponse,
-    ModelInfo,
     ModelsResponse,
     SwitchModelRequest,
     SwitchModelResponse,
@@ -21,6 +20,9 @@ from ..contract import (
 from ..engine import TTSEngine
 from ..engines import create_engine
 from ..web import router as web_router
+
+# Per-upload size cap (DoS protection on /tts/clone).
+_MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 # Global engine instance
 _engine: TTSEngine | None = None
@@ -65,72 +67,34 @@ def health() -> HealthResponse:
         supports_cloning=engine.supports_cloning,
         supports_design=engine.supports_design,
         supports_custom_voice=engine.supports_custom_voice,
+        supports_emotional_cloning=engine.supports_emotional_cloning,
     )
-
-
-# Available Qwen3-TTS models
-AVAILABLE_MODELS = [
-    ModelInfo(
-        id="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-        name="CustomVoice 1.7B",
-        variant="CustomVoice",
-        supports_custom_voice=True,
-        supports_cloning=False,
-        supports_design=False,
-    ),
-    ModelInfo(
-        id="Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
-        name="VoiceDesign 1.7B",
-        variant="VoiceDesign",
-        supports_custom_voice=False,
-        supports_cloning=False,
-        supports_design=True,
-    ),
-    ModelInfo(
-        id="Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-        name="Base 1.7B (Clone)",
-        variant="Base",
-        supports_custom_voice=False,
-        supports_cloning=True,
-        supports_design=False,
-    ),
-    ModelInfo(
-        id="Qwen/Qwen3-TTS-12Hz-0.6B-Base",
-        name="Base 0.6B (Clone, Low VRAM)",
-        variant="Base",
-        supports_custom_voice=False,
-        supports_cloning=True,
-        supports_design=False,
-    ),
-]
 
 
 @app.get("/models", response_model=ModelsResponse)
 def list_models() -> ModelsResponse:
-    """List available models and current model."""
+    """List models the current engine can switch between."""
     engine = get_engine()
     return ModelsResponse(
         current=engine.model_id,
-        available=AVAILABLE_MODELS,
+        available=engine.available_models(),
     )
 
 
 @app.post("/model/switch", response_model=SwitchModelResponse)
 def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
-    """Switch to a different model.
+    """Switch to a different model within the current engine.
 
     Warning: This unloads the current model and loads the new one.
     Takes ~2 minutes and server is unavailable during reload.
     """
-    # Validate model ID
-    valid_ids = {m.id for m in AVAILABLE_MODELS}
+    engine = get_engine()
+    valid_ids = {m.id for m in engine.available_models()}
     if req.model_id not in valid_ids:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid model ID. Available: {', '.join(valid_ids)}",
+            detail=f"Invalid model ID. Available: {', '.join(sorted(valid_ids))}",
         )
-
-    engine = get_engine()
 
     # Check if already loaded
     if engine.model_id == req.model_id:
@@ -141,6 +105,7 @@ def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
             supports_cloning=engine.supports_cloning,
             supports_design=engine.supports_design,
             supports_custom_voice=engine.supports_custom_voice,
+            supports_emotional_cloning=engine.supports_emotional_cloning,
         )
 
     # Reload with new model
@@ -153,6 +118,7 @@ def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
             supports_cloning=engine.supports_cloning,
             supports_design=engine.supports_design,
             supports_custom_voice=engine.supports_custom_voice,
+            supports_emotional_cloning=engine.supports_emotional_cloning,
         )
     except Exception as e:
         raise HTTPException(
@@ -246,12 +212,47 @@ def _collect_gen_kwargs(
     }
 
 
+def _validate_upload_size(upload: UploadFile | None, field: str) -> None:
+    """Reject uploads larger than _MAX_UPLOAD_BYTES (DoS protection)."""
+    if upload is None or upload.size is None:
+        return
+    if upload.size > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{field} exceeds {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit",
+        )
+
+
+def _parse_emotion_vector(raw: str) -> list[float] | None:
+    """Parse 'h,a,s,af,d,m,su,c' string -> list[float] of length 8.
+
+    Returns None for empty input. Raises HTTPException(400) on bad format.
+    """
+    if not raw:
+        return None
+    try:
+        vec = [float(x) for x in raw.split(",")]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="emotion_vector must be comma-separated floats")
+    if len(vec) != 8:
+        raise HTTPException(
+            status_code=400,
+            detail="emotion_vector must have exactly 8 floats: "
+            "[happy,angry,sad,afraid,disgusted,melancholic,surprised,calm]",
+        )
+    return vec
+
+
 @app.post("/tts/clone")
 async def tts_clone(
     text: str = Form(..., description="Text to synthesize"),
     language: str = Form(default="Auto", description="Language code"),
     reference_text: str = Form(default="", description="Transcript of reference audio (improves quality)"),
     reference_audio: UploadFile = File(..., description="Reference audio WAV (3-10 sec)"),
+    emotion_audio: UploadFile | None = File(default=None, description="Emotion reference WAV (IndexTTS2 only)"),
+    emotion_text: str = Form(default="", description="Free-form emotion description (IndexTTS2 only)"),
+    emotion_vector: str = Form(default="", description="8 comma-sep floats: [happy,angry,sad,afraid,disgusted,melancholic,surprised,calm]"),
+    emotion_alpha: float = Form(default=1.0, description="Emotion blend strength in [0.0, 1.0]"),
     temperature: float | None = Form(default=None, ge=0.01, le=2.0),
     top_k: int | None = Form(default=None, ge=1, le=200),
     top_p: float | None = Form(default=None, ge=0.1, le=1.0),
@@ -260,8 +261,10 @@ async def tts_clone(
 ) -> Response:
     """Generate speech by cloning voice from reference audio.
 
-    Requires a model that supports voice cloning (e.g., Base model).
-    Provide reference_text (transcript) for better quality.
+    Requires a model that supports voice cloning. Optional emotion params
+    (audio / text / 8-dim vector) require an engine with
+    supports_emotional_cloning=True (e.g. IndexTTS2). Use exactly one
+    emotion mode per request.
     """
     engine = get_engine()
 
@@ -271,13 +274,42 @@ async def tts_clone(
             detail="Voice cloning not supported by current model configuration",
         )
 
+    _validate_upload_size(reference_audio, "reference_audio")
+    _validate_upload_size(emotion_audio, "emotion_audio")
+
+    has_emotion = (emotion_audio is not None) or bool(emotion_text) or bool(emotion_vector)
+    if has_emotion and not engine.supports_emotional_cloning:
+        raise HTTPException(
+            status_code=400,
+            detail="Current engine does not support emotional cloning. "
+            "Switch to TTS_ENGINE=indextts2.",
+        )
+
+    modes = sum([emotion_audio is not None, bool(emotion_text), bool(emotion_vector)])
+    if modes > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Use only one emotion mode: emotion_audio, emotion_text, OR emotion_vector",
+        )
+
+    if not 0.0 <= emotion_alpha <= 1.0:
+        raise HTTPException(status_code=400, detail="emotion_alpha must be between 0.0 and 1.0")
+
+    vec = _parse_emotion_vector(emotion_vector)
+
     audio_bytes = await reference_audio.read()
+    emotion_audio_bytes = await emotion_audio.read() if emotion_audio is not None else None
+
     gen_kwargs = _collect_gen_kwargs(temperature, top_k, top_p, repetition_penalty, max_new_tokens)
     wav_bytes = engine.synthesize_clone(
         text=text,
         reference_audio=audio_bytes,
         language=language,
         reference_text=reference_text if reference_text else None,
+        emotion_audio=emotion_audio_bytes,
+        emotion_text=emotion_text or None,
+        emotion_vector=vec,
+        emotion_alpha=emotion_alpha,
         **gen_kwargs,
     )
     return Response(content=wav_bytes, media_type="audio/wav")

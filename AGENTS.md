@@ -148,6 +148,13 @@ curl -X POST http://localhost:9880/tts/batch \
 | `TTS_QWEN3_MODEL_ID` | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` | Model |
 | `TTS_QWEN3_DEVICE` | `cuda:0` | CUDA device |
 | `TTS_QWEN3_DTYPE` | `bfloat16` | Data type |
+| `TTS_INDEXTTS2_MODEL_DIR` | `~/.cache/tts-adapter/models/IndexTTS-2` | Local checkpoint dir |
+| `TTS_INDEXTTS2_REPO_DIR` | - | Path to cloned `index-tts` repo (added to sys.path) |
+| `TTS_INDEXTTS2_USE_FP16` | `true` | FP16 inference |
+| `TTS_INDEXTTS2_USE_CUDA_KERNEL` | `false` | Optional CUDA kernel speed path |
+| `TTS_INDEXTTS2_USE_DEEPSPEED` | `false` | Optional DeepSpeed inference |
+| `TTS_INDEXTTS2_USE_RANDOM` | `false` | Random sampling (reduces clone fidelity) |
+| `TTS_INDEXTTS2_TRIM_SILENCE` | `false` | Trim leading/trailing silence (preserves emotional pauses by default) |
 
 ---
 

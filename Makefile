@@ -1,4 +1,4 @@
-.PHONY: help install download-model serve server tts tts-clone tts-design test build rebuild up down logs health shell clean
+.PHONY: help install download-model download-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build rebuild up down logs health shell clean
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -15,7 +15,9 @@ help:
 	@echo "  make server stop     - Kill local server"
 	@echo "  make tts text=\"...\" [instruct=\"...\"] - Generate speech"
 	@echo "  make tts-clone text=\"...\" ref=sample.wav - Clone voice (Base model)"
+	@echo "  make tts-clone-emotion text=\"...\" ref=sample.wav emotion-text=\"angry\" [alpha=0.7] - Clone+emotion (IndexTTS2)"
 	@echo "  make tts-design text=\"...\" instruct=\"...\" - Design voice (VoiceDesign model)"
+	@echo "  make download-indextts2  - Download IndexTTS-2 checkpoints (offline use)"
 	@echo "  make test            - Test single TTS generation"
 	@echo "  make test batch      - Test batch TTS generation"
 	@echo ""
@@ -40,6 +42,10 @@ install:
 # Download model for offline use
 download-model:
 	uv run python scripts/qwen3/download_model.py
+
+# Download IndexTTS-2 checkpoints for offline use
+download-indextts2:
+	uv run python scripts/indextts2/download_model.py
 
 # === LOCAL SERVER ===
 serve:
@@ -86,6 +92,22 @@ else ifndef ref
 	@echo "Usage: make tts-clone text=\"Your text\" ref=sample.wav"
 else
 	PYTHONPATH=. uv run python scripts/qwen3/tts_clone.py "$(text)" --ref "$(ref)"
+endif
+
+# Voice cloning + emotion (requires TTS_ENGINE=indextts2)
+# Pick exactly one emotion mode: emotion-text=, emotion-audio=, or emotion-vector=
+tts-clone-emotion:
+ifndef text
+	@echo "Usage: make tts-clone-emotion text=\"...\" ref=sample.wav emotion-text=\"angry\" [alpha=0.7]"
+else ifndef ref
+	@echo "Usage: make tts-clone-emotion text=\"...\" ref=sample.wav emotion-text=\"angry\" [alpha=0.7]"
+else
+	@PYTHONPATH=. uv run python scripts/indextts2/tts_clone_emotion.py "$(text)" \
+	    --ref "$(ref)" \
+	    $(if $(emotion-text),--emotion-text "$(emotion-text)") \
+	    $(if $(emotion-audio),--emotion-audio "$(emotion-audio)") \
+	    $(if $(emotion-vector),--emotion-vector "$(emotion-vector)") \
+	    $(if $(alpha),--alpha $(alpha))
 endif
 
 # === TEST ===

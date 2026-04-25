@@ -6,15 +6,54 @@ from functools import lru_cache
 from typing import Literal
 
 import soundfile as sf
-import torch
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ..audio_utils import bytes_to_tempfile, trim_silence
 from ..config import get_settings
+from ..contract import ModelInfo
+from ..gpu_utils import unload_gpu_model
 
 # Qwen3-specific defaults (owned by this engine)
 _DEFAULT_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 _DEFAULT_DEVICE = "cuda:0"
 _DEFAULT_DTYPE = "bfloat16"
+
+# Models this engine can switch between at runtime (moved here from routes.py
+# so engines own their own metadata — keeps routes free of engine-name branching).
+_AVAILABLE_MODELS: list[ModelInfo] = [
+    ModelInfo(
+        id="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        name="CustomVoice 1.7B",
+        variant="CustomVoice",
+        supports_custom_voice=True,
+        supports_cloning=False,
+        supports_design=False,
+    ),
+    ModelInfo(
+        id="Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        name="VoiceDesign 1.7B",
+        variant="VoiceDesign",
+        supports_custom_voice=False,
+        supports_cloning=False,
+        supports_design=True,
+    ),
+    ModelInfo(
+        id="Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+        name="Base 1.7B (Clone)",
+        variant="Base",
+        supports_custom_voice=False,
+        supports_cloning=True,
+        supports_design=False,
+    ),
+    ModelInfo(
+        id="Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+        name="Base 0.6B (Clone, Low VRAM)",
+        variant="Base",
+        supports_custom_voice=False,
+        supports_cloning=True,
+        supports_design=False,
+    ),
+]
 
 
 class Qwen3Settings(BaseSettings):
@@ -99,6 +138,8 @@ class Qwen3Engine:
         if self._model is not None:
             return
 
+        import torch
+
         dtype_map = {
             "bfloat16": torch.bfloat16,
             "float16": torch.float16,
@@ -179,7 +220,7 @@ class Qwen3Engine:
                 **gen_kwargs,
             )
 
-        wav = self._trim_silence(wavs[0], sr)
+        wav = trim_silence(wavs[0], sr)
         buf = io.BytesIO()
         sf.write(buf, wav, sr, format="WAV")
         return buf.getvalue()
@@ -214,7 +255,7 @@ class Qwen3Engine:
 
         results = []
         for wav in wavs:
-            trimmed = self._trim_silence(wav, sr)
+            trimmed = trim_silence(wav, sr)
             buf = io.BytesIO()
             sf.write(buf, trimmed, sr, format="WAV")
             results.append(buf.getvalue())
@@ -244,25 +285,14 @@ class Qwen3Engine:
 
         actual_language = self._resolve_language(language)
 
-        # Handle bytes input - write to temp file
-        temp_path = None
-        if isinstance(reference_audio, bytes):
-            import tempfile
-            temp_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-            temp_path.write(reference_audio)
-            temp_path.close()
-            audio_path = temp_path.name
-        else:
-            audio_path = reference_audio
-
         # Use x_vector_only_mode when no transcript provided
         use_x_vector_only = not reference_text or reference_text.strip() == ""
 
         gen_kwargs = self._filter_gen_kwargs(**kwargs)
 
-        try:
+        def _generate(audio_path: str):
             with self._lock:
-                wavs, sr = self._model.generate_voice_clone(
+                return self._model.generate_voice_clone(
                     text=text,
                     language=actual_language,
                     ref_audio=audio_path,
@@ -270,12 +300,14 @@ class Qwen3Engine:
                     x_vector_only_mode=use_x_vector_only,
                     **gen_kwargs,
                 )
-        finally:
-            if temp_path:
-                import os
-                os.unlink(temp_path.name)
 
-        wav = self._trim_silence(wavs[0], sr)
+        if isinstance(reference_audio, bytes):
+            with bytes_to_tempfile(reference_audio, suffix=".wav") as audio_path:
+                wavs, sr = _generate(audio_path)
+        else:
+            wavs, sr = _generate(reference_audio)
+
+        wav = trim_silence(wavs[0], sr)
         buf = io.BytesIO()
         sf.write(buf, wav, sr, format="WAV")
         return buf.getvalue()
@@ -311,40 +343,10 @@ class Qwen3Engine:
                 **gen_kwargs,
             )
 
-        wav = self._trim_silence(wavs[0], sr)
+        wav = trim_silence(wavs[0], sr)
         buf = io.BytesIO()
         sf.write(buf, wav, sr, format="WAV")
         return buf.getvalue()
-
-    def _trim_silence(self, wav, sr: int, pad_seconds: float = 0.05):
-        """Trim leading/trailing near-silence to avoid padded output."""
-        try:
-            import numpy as np
-        except ImportError:
-            return wav
-
-        wav_arr = np.asarray(wav)
-        if wav_arr.size == 0:
-            return wav_arr
-
-        if wav_arr.ndim == 2:
-            signal = np.max(np.abs(wav_arr), axis=1)
-        else:
-            signal = np.abs(wav_arr)
-
-        max_amp = float(signal.max()) if signal.size else 0.0
-        if max_amp <= 0:
-            return wav_arr
-
-        threshold = max(max_amp * 0.01, 1e-4)
-        indices = np.where(signal > threshold)[0]
-        if indices.size == 0:
-            return wav_arr
-
-        pad = int(sr * pad_seconds)
-        start = max(int(indices[0]) - pad, 0)
-        end = min(int(indices[-1]) + pad + 1, wav_arr.shape[0])
-        return wav_arr[start:end]
 
     @property
     def supports_cloning(self) -> bool:
@@ -360,6 +362,19 @@ class Qwen3Engine:
     def supports_custom_voice(self) -> bool:
         """Check if loaded model supports preset speakers (CustomVoice)."""
         return "CustomVoice" in self._model_id
+
+    @property
+    def supports_emotional_cloning(self) -> bool:
+        """Qwen3 cannot combine clone + emotion (model-architecture limitation).
+
+        Base model accepts no `instruct` param; CustomVoice has no clone path.
+        See docs/engines/qwen3/README.md for details.
+        """
+        return False
+
+    def available_models(self) -> list[ModelInfo]:
+        """Models this engine can switch between via /model/switch."""
+        return _AVAILABLE_MODELS
 
     @property
     def engine_name(self) -> str:
@@ -400,15 +415,10 @@ class Qwen3Engine:
             model_id: New model ID (e.g., 'Qwen/Qwen3-TTS-12Hz-1.7B-Base')
         """
         with self._lock:
-            # Unload current model
             if self._model is not None:
-                del self._model
+                model_ref = self._model
                 self._model = None
-                # Force garbage collection to free GPU memory
-                import gc
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                unload_gpu_model(model_ref)
 
             # Update model ID and resolve local cache path for offline mode
             self._model_id = model_id

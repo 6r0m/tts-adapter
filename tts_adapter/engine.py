@@ -2,6 +2,8 @@
 
 from typing import Any, Protocol, runtime_checkable
 
+from .contract import ModelInfo
+
 
 @runtime_checkable
 class TTSEngine(Protocol):
@@ -89,21 +91,49 @@ class TTSEngine(Protocol):
         """Whether this engine/model supports preset speakers (Simple TTS)."""
         ...
 
+    @property
+    def supports_emotional_cloning(self) -> bool:
+        """Whether this engine can combine voice cloning with emotion control.
+
+        Engines that return False MUST be rejected at the API layer when
+        emotion params are present — never silently ignored.
+        """
+        ...
+
+    def available_models(self) -> list[ModelInfo]:
+        """Return models this engine can switch between.
+
+        Engines own their own metadata so routes don't branch on engine_name.
+        Single-model engines (e.g. IndexTTS2) return a one-entry list.
+        """
+        ...
+
     def synthesize_clone(
         self,
         text: str,
         reference_audio: bytes,
         language: str = "Auto",
         reference_text: str | None = None,
+        *,
+        emotion_audio: bytes | str | None = None,
+        emotion_text: str | None = None,
+        emotion_vector: list[float] | None = None,
+        emotion_alpha: float = 1.0,
         **kwargs: Any,
     ) -> bytes:
-        """Clone voice from reference audio.
+        """Clone voice from reference audio, optionally with emotion control.
 
         Args:
             text: Text to synthesize
             reference_audio: WAV bytes of reference voice (3-10 sec)
             language: Language code
             reference_text: Optional transcript of reference audio
+            emotion_audio: WAV bytes/path for emotion reference
+                (engines without supports_emotional_cloning ignore this)
+            emotion_text: Free-form emotion description
+            emotion_vector: 8-dim vector ordered as
+                [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+            emotion_alpha: Emotion blend strength in [0.0, 1.0]
 
         Returns:
             WAV audio bytes

@@ -177,23 +177,35 @@ Before writing IndexTTS2, audit what already exists in the repo and **reuse, don
   (qwen3 returns its 4-entry variant list; indextts2 returns its single-entry list). The existing `model_id` property covers "which is current" — no new `model_info()` accessor needed.
 - [ ] `/health` returns new `supports_emotional_cloning` flag
 
-## Phase 4: Install & isolation
+## Phase 4: Install, isolation & Docker
 
 - [ ] **Do NOT** add `indextts` to main [pyproject.toml](../pyproject.toml) deps — not on PyPI and likely to conflict with `qwen-tts`'s transformers pin (4.57.3).
 - [ ] Recommended isolation options (pick one, document both in engine README):
-  1. **Separate Docker image** (`Dockerfile.indextts2`) with its own uv-locked environment
+  1. **Separate Docker image** (`Dockerfile.indextts2` + new `adapter-tts-indextts2` service in [compose.yml](../compose.yml)) with its own uv-locked environment. Reuses the existing HF-cache volume mount and `pull_policy: missing` offline pattern.
   2. **Parallel uv env** outside adapter — set `TTS_INDEXTTS2_REPO_DIR` so engine imports from there via `sys.path`
 - [ ] If Phase 0 confirms no `qwen-tts` ↔ `indextts` dep conflict, reconsider making it an optional extra: `[project.optional-dependencies] indextts2 = [...]`. Decide only after probe.
-- [ ] Update [.env.example](../.env.example): add commented-out `TTS_INDEXTTS2_*` section
+- [ ] Update [.env.example](../.env.example): add commented-out `TTS_INDEXTTS2_*` section. Default `TTS_INDEXTTS2_MODEL_DIR=~/.cache/tts-adapter/models/IndexTTS-2` matches the download script's destination.
+- [ ] **Offline contract** (mirrors existing Qwen3 pattern):
+  - Engine constructs `IndexTTS2(...)` with explicit local `cfg_path` + `model_dir` — no HF Hub calls
+  - `HF_HUB_OFFLINE=1` (already a global env in `.env.example`) blocks any accidental network access
+  - First-run download via `make download-indextts2`; all subsequent runs work fully offline
+- [ ] [AGENTS.md](../AGENTS.md) — add `TTS_INDEXTTS2_*` rows to the env-vars table (lines 141-150)
 
 ## Phase 5: CLI
 
 - [ ] `scripts/indextts2/tts_clone_emotion.py` — args: `--ref`, `--emotion-audio | --emotion-text | --emotion-vector`, `--alpha`, `--output`, `--bench`
-- [ ] `scripts/indextts2/download_model.py` — thin wrapper around `hf download IndexTeam/IndexTTS-2 --local-dir ...` (mirror [scripts/qwen3/download_model.py](../scripts/qwen3/download_model.py))
+- [ ] `scripts/indextts2/download_model.py` — thin wrapper around `hf download IndexTeam/IndexTTS-2 --local-dir ...` (mirror [scripts/qwen3/download_model.py](../scripts/qwen3/download_model.py)). Default cache: `~/.cache/tts-adapter/models/IndexTTS-2/`.
 - [ ] `--bench` flag emits one-line JSON per run:
   ```
   {"engine":"indextts2","text_chars":42,"audio_seconds":2.8,"elapsed_seconds":4.1,"rtf":1.46,"cuda_max_memory_mb":7842}
   ```
+- [ ] [Makefile](../Makefile) — add targets mirroring qwen3 conventions:
+  - `make download-indextts2` → runs `scripts/indextts2/download_model.py`
+  - `make tts-clone-emotion text="..." ref=sample.wav emotion-text="..."` → runs the emotion CLI
+- [ ] [tests/](../tests/) — add `test_emotion_cloning.py`:
+  - Integration tests using existing `httpx.Client` + `BASE_URL` pattern
+  - Skip on `if not health.get("supports_emotional_cloning"): pytest.skip(...)` (mirrors existing `supports_design` skip pattern)
+  - Unit tests for emotion-vector parsing + alpha bounds (no server needed)
 
 ## Phase 6: Docs
 

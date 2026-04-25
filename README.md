@@ -155,6 +155,7 @@ curl http://localhost:9880/health
 | [Architecture](docs/architecture.md) | Design decisions, engine protocol |
 | [API Reference](docs/api-reference.md) | Endpoint specs, request/response formats |
 | [Qwen3 Engine](docs/engines/qwen3/README.md) | Model variants, speakers, setup |
+| [IndexTTS2 Engine](docs/engines/indextts2/README.md) | Voice cloning + emotion control |
 | [AGENTS.md](AGENTS.md) | Project instructions for AI agents |
 
 ## Engines
@@ -162,6 +163,11 @@ curl http://localhost:9880/health
 | Engine | Status | Description |
 |--------|--------|-------------|
 | [Qwen3-TTS](docs/engines/qwen3/README.md) | ✅ Ready | 1.7B/0.6B with voice cloning, preset speakers, instructions |
+| [IndexTTS2](docs/engines/indextts2/README.md) | ✅ Ready | Voice cloning **with disentangled emotion control** (audio / text / 8-dim vector) |
+
+**Engine choice:**
+- `qwen3` (default) — multilingual / Russian / general cloning, preset speakers, `instruct` style.
+- `indextts2` — when you need to clone a specific voice **and** apply emotions (Qwen3 cannot do both at once).
 
 ### Adding New Engines
 

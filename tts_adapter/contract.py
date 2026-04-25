@@ -63,6 +63,7 @@ class HealthResponse(BaseModel):
     supports_cloning: bool = Field(default=False, description="Whether voice cloning is supported")
     supports_design: bool = Field(default=False, description="Whether voice design is supported")
     supports_custom_voice: bool = Field(default=False, description="Whether preset speakers are supported")
+    supports_emotional_cloning: bool = Field(default=False, description="Whether clone+emotion can be combined")
 
 
 class ModelInfo(BaseModel):
@@ -70,10 +71,11 @@ class ModelInfo(BaseModel):
 
     id: str = Field(..., description="Model identifier")
     name: str = Field(..., description="Human-readable model name")
-    variant: str = Field(..., description="Model variant: Base, CustomVoice, or VoiceDesign")
+    variant: str = Field(..., description="Model variant: Base, CustomVoice, VoiceDesign, or Base+Emotion")
     supports_cloning: bool = Field(default=False)
     supports_design: bool = Field(default=False)
     supports_custom_voice: bool = Field(default=False)
+    supports_emotional_cloning: bool = Field(default=False)
 
 
 class ModelsResponse(BaseModel):
@@ -98,3 +100,4 @@ class SwitchModelResponse(BaseModel):
     supports_cloning: bool = Field(default=False)
     supports_design: bool = Field(default=False)
     supports_custom_voice: bool = Field(default=False)
+    supports_emotional_cloning: bool = Field(default=False)
