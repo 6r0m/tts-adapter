@@ -1,5 +1,21 @@
 # Add IndexTTS2 Engine — Emotional Voice Cloning
 
+> ⚠️ **SUPERSEDED for implementation architecture.**
+> The in-process engine pattern this file describes was rejected post-review (dependency conflict between `qwen-tts` and `indextts` — `transformers==4.57.3` vs `transformers==4.52.1`, `torch==2.8.*`, `deepspeed==0.17.1`). The current source of truth is **[engine_install_and_switch.md](engine_install_and_switch.md) Phase A.1** (`IndexTTS2RemoteEngine` + isolated worker process).
+>
+> **What stays valid in this file:**
+> - The motivation (Qwen3 limitation: cannot combine clone + emotion)
+> - The emotion contract (3 modes: audio / text / 8-dim vector; alpha range; vector ordering)
+> - API validation rules (one-mode-only, alpha bounds, vector length, upload size)
+> - Russian-quality and 4070-12GB benchmark notes
+>
+> **What is rejected:**
+> - In-process `IndexTTS2Engine` class
+> - `TTS_INDEXTTS2_REPO_DIR` / `sys.path` injection
+> - Any plan step that imports `indextts` from the main adapter venv
+>
+> Do NOT pick between this file and the new one. The new one wins for architecture.
+
 > **When complete:** move this file to `todo/done/` (do **not** delete).
 > **Context doc:** approved plan at `~/.claude/plans/search-web-carefully-is-merry-aurora.md`
 > **Why:** Qwen3-TTS cannot combine clone + emotion (model-architecture limitation — see [docs/engines/qwen3/README.md:33-35](../docs/engines/qwen3/README.md)). IndexTTS2 (Bilibili, Sept 2025) solves this via disentangled timbre/emotion conditioning. **Qwen3 stays the default**; IndexTTS2 is an additive second engine.

@@ -1,7 +1,10 @@
 # Engine Install UX + Unified Cross-Engine Switch
 
+> ⚠️ **STATUS: pre-implementation cleanup REQUIRED before any new feature work.**
+> The current `develop` branch contains the rejected in-process IndexTTS2 design (engine class, `TTS_INDEXTTS2_REPO_DIR` env, README "✅ Ready" claim, isinstance-coupled CLI). This contradicts the architecture decision below. **Phase 0 must run first** to remove the contradiction — otherwise future agents will follow the wrong path.
+>
 > **When complete:** move this file to `todo/done/` (do **not** delete).
-> **Builds on:** [todo/indextts2_engine.md](indextts2_engine.md) — that work produced an **in-process** `IndexTTS2Engine`. The post-review architecture decision below supersedes that approach: IndexTTS2 must run as a separate process. The in-process class is to be rewritten as a thin HTTP-forwarding `IndexTTS2RemoteEngine`.
+> **Supersedes:** [todo/indextts2_engine.md](indextts2_engine.md) for implementation architecture (that file now carries a SUPERSEDED banner). Emotion contract / validation / benchmark sections from the old todo remain valid.
 > **Why:** the user wants a fresh `git clone` → one `make` command → working server. Plus engine selection from the web UI rather than `.env` edits + restart. Without sound dependency isolation, neither happens.
 
 ---
@@ -107,6 +110,53 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 
 ---
 
+## Phase 0: Architecture-drift cleanup (BLOCKING — do this first)
+
+> Pure subtractive work. Removes claims/code that contradict the Option C decision. **No new features.** After Phase 0 the repo honestly reflects "IndexTTS2 = WIP, isolated worker design" with no in-process trap left to step in.
+
+- [ ] **Demote IndexTTS2 status in [README.md](../README.md):**
+  - Engines table: `✅ Ready` → `🚧 WIP (isolated worker design)`
+  - Drop the "indextts2 — when you need to clone…" recommendation paragraph (or rephrase as "planned").
+  - Promotion criterion documented inline:
+    > Switches to ✅ once: `make install-indextts2 && make run-indextts2 && make serve` then a `/tts/clone` with `emotion_text` returns `200 audio/wav`.
+- [ ] **Strip in-process env vars from [.env.example](../.env.example):**
+  - Remove: `TTS_INDEXTTS2_REPO_DIR`, `TTS_INDEXTTS2_USE_FP16`, `TTS_INDEXTTS2_USE_CUDA_KERNEL`, `TTS_INDEXTTS2_USE_DEEPSPEED`, `TTS_INDEXTTS2_USE_RANDOM`, `TTS_INDEXTTS2_TRIM_SILENCE`, `TTS_INDEXTTS2_MODEL_DIR`.
+  - Replace with the **main-adapter-side** vars only:
+    ```env
+    # IndexTTS2 (remote worker — set TTS_ENGINE=indextts2 and run `make run-indextts2` separately)
+    # TTS_INDEXTTS2_URL=http://localhost:9881
+    # TTS_INDEXTTS2_TIMEOUT=180
+    ```
+  - Worker-side env vars (MODEL_DIR, USE_FP16, etc.) move to `docs/engines/indextts2/README.md` under "Worker configuration", not `.env.example`.
+- [ ] **Strip in-process rows from [AGENTS.md](../AGENTS.md):**
+  - Remove: `TTS_INDEXTTS2_MODEL_DIR`, `TTS_INDEXTTS2_REPO_DIR`, `TTS_INDEXTTS2_USE_FP16`, `TTS_INDEXTTS2_USE_CUDA_KERNEL`, `TTS_INDEXTTS2_USE_DEEPSPEED`, `TTS_INDEXTTS2_USE_RANDOM`, `TTS_INDEXTTS2_TRIM_SILENCE`.
+  - Add: `TTS_INDEXTTS2_URL`, `TTS_INDEXTTS2_TIMEOUT`.
+  - Note in the table: "Worker-side env (USE_FP16, MODEL_DIR, …) is documented in [docs/engines/indextts2/README.md](../docs/engines/indextts2/README.md), not here."
+- [ ] **Decouple [scripts/indextts2/tts_clone_emotion.py](../scripts/indextts2/tts_clone_emotion.py) from the concrete class:**
+  - Drop `from tts_adapter.engines.indextts2 import IndexTTS2Engine`.
+  - Drop `if not isinstance(engine, IndexTTS2Engine):` — that breaks the moment we rename to `IndexTTS2RemoteEngine`.
+  - Replace with capability check via the protocol:
+    ```python
+    engine = create_engine()
+    if engine.engine_name != "indextts2" or not engine.supports_emotional_cloning:
+        print("Error: set TTS_ENGINE=indextts2 and run `make run-indextts2`",
+              file=sys.stderr)
+        return 1
+    ```
+- [ ] **Health-gate `make tts-clone-emotion` on the worker URL:**
+  ```make
+  tts-clone-emotion:
+      @curl -fsS http://localhost:9881/health >/dev/null 2>&1 || \
+          (echo "IndexTTS2 worker not running. Start it first: make run-indextts2"; exit 1)
+      ...existing body...
+  ```
+- [ ] **Trim/relabel [docs/engines/indextts2/README.md](../docs/engines/indextts2/README.md):**
+  - Top banner: "Status: WIP — isolated worker architecture in progress (see [todo/engine_install_and_switch.md](../../../todo/engine_install_and_switch.md))."
+  - Drop the "Install indextts into the adapter env" path and the `TTS_INDEXTTS2_REPO_DIR` mention.
+  - Keep the emotion-mode contract, alpha ranges, vector ordering, Russian/4070 caveats — these survive the rewrite.
+- [ ] **No code rewrites yet** — `tts_adapter/engines/indextts2.py` is left in place for now. Phase A.1 rewrites it. Phase 0 is purely about stopping the docs/CLI from advertising the rejected design.
+- [ ] Verify: `git grep TTS_INDEXTTS2_REPO_DIR` returns ONLY hits inside the engine source file (which Phase A.1 will rewrite). All docs/env/Makefile mentions are gone.
+
 ## Phase A: IndexTTS2 isolation refactor + repo-local weights convention
 
 **Two parts.** First the architecture rewrite (the in-process engine becomes a remote client), then the repo-local weights pattern that both engines adopt.
@@ -131,7 +181,7 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
   - All worker-side settings via `TTS_INDEXTTS2_*` env: `MODEL_DIR`, `CFG_PATH`, `USE_FP16`, `USE_CUDA_KERNEL`, `USE_DEEPSPEED`, `USE_RANDOM`, `TRIM_SILENCE`. Defaults same as today.
   - Listens on `TTS_INDEXTTS2_PORT` (default 9881).
 - [ ] **`tts_adapter/engines/__init__.py`** — registration unchanged: `_ENGINES["indextts2"] = IndexTTS2RemoteEngine`. Same engine name, same protocol, different implementation.
-- [ ] **Tests** — keep the protocol-conformance assertion (`isinstance(e, TTSEngine)`) for the remote engine. Add a unit test that mocks `httpx.Client.post` and verifies the form fields are wired correctly. The integration tests requiring a live worker get skipped via `pytest.skip` if `TTS_INDEXTTS2_URL` is unreachable.
+- [ ] **Tests** — keep the protocol-conformance assertion (`isinstance(e, TTSEngine)`) for the remote engine. Add a unit test that mocks `httpx.Client.post` and verifies the form fields are wired correctly. The integration tests requiring a live worker get skipped via the `live_client` fixture defined in the Verification section (skips on `httpx.ConnectError`, never raises).
 - [ ] **Docs** — rewrite [docs/engines/indextts2/README.md](../docs/engines/indextts2/README.md) for the two-process model: install / run worker / configure main adapter URL.
 
 ### A.2 — Repo-local weights + vendor convention (both engines)
@@ -299,6 +349,40 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 
 ## Verification
 
+### Test infrastructure fixes (apply alongside Phase A.1)
+
+- [ ] **Add a `live_client` fixture** in `tests/conftest.py` (new file) so integration tests skip cleanly when no server/worker is running — currently they raise `httpx.ConnectError` which surfaces as ERROR not SKIP:
+  ```python
+  @pytest.fixture
+  def live_client():
+      client = httpx.Client(base_url="http://localhost:9880", timeout=30.0)
+      try:
+          client.get("/health")
+      except httpx.ConnectError:
+          pytest.skip("Live server not running at localhost:9880")
+      return client
+  ```
+  Use `live_client` in every test that calls the API. Reserve the bare `client` fixture for tests that intentionally exercise connection failure.
+- [ ] **Stop accepting 400 as success** in [tests/test_emotion_cloning.py](../tests/test_emotion_cloning.py). The current `assert response.status_code in {200, 400}` lets generation be silently broken. Split into:
+  - **Validation tests** (silent minimal WAV, `expect == 400`) — rejection paths only.
+  - **Real integration tests** (uses a real reference WAV from `tests/fixtures/`, `expect == 200 and content-type == "audio/wav"`) — gated by `live_client`.
+  - Real fixtures live under `tests/fixtures/voice_3s.wav` (and `emo_*.wav` for emotion-audio mode); add a one-line README in that folder describing license / source.
+- [ ] **Strengthen the upload-size test** — `_MAX_UPLOAD_BYTES == 20 * 1024 * 1024` only proves the constant. Replace with a real rejection test:
+  ```python
+  class _FakeUpload:
+      def __init__(self, size): self.size = size
+
+  def test_oversized_upload_rejected_413():
+      with pytest.raises(HTTPException) as exc:
+          _validate_upload_size(_FakeUpload(_MAX_UPLOAD_BYTES + 1), "reference_audio")
+      assert exc.value.status_code == 413
+
+  def test_unknown_size_passes():
+      _validate_upload_size(_FakeUpload(None), "reference_audio")  # no raise
+  ```
+
+### End-to-end happy path
+
 - [ ] **Fresh-clone happy path** (in a scratch dir):
   ```bash
   git clone <repo> tts-adapter-test && cd tts-adapter-test
@@ -325,8 +409,8 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
   ```
 - [ ] **Switch with no worker → 503**: stop `run-indextts2`, then attempt the switch — expect a 503 with a hint to start the worker.
 - [ ] **Legacy fallback warning**: set `TTS_*_MODEL_PATH=~/.cache/tts-adapter/...`, start server, verify ONE warning line at startup, NO per-request warnings.
-- [ ] **Docker happy path**: `make build && make up && make health` after the new compose mount.
 - [ ] **Regression**: existing 19 unit tests still pass; existing Qwen3 CLI (`make tts-clone`) unchanged; the in-process IndexTTS2 unit tests get rewritten to mock httpx.
+- [ ] **Docker happy path** — **deferred**. Requires a `Dockerfile.indextts2` + a second compose service `adapter-tts-indextts2` + healthcheck + volume mount alignment. Local two-terminal worker is the v1 happy path. Re-enable Docker verification once that scaffolding lands as a follow-up todo.
 
 ---
 
@@ -343,9 +427,13 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 
 ## Execution order
 
-1. **Phase A.1** — IndexTTS2 isolation refactor (engine becomes remote client, new worker `serve.py`). **Largest blast radius — verify in isolation before A.2.**
-2. **Phase A.2** — `models/<engine>/<name>/` + `vendor/` repo-local convention + legacy-fallback warning.
-3. **Phase B** — `make install-{qwen3,indextts2}` + `make run-indextts2`.
-4. **Phase B.5** — One-shot Option-A probe to document the conflict in `docs/engines/indextts2/README.md`.
-5. **Phase C** — Unified `/model/switch` (cross-engine). Independent of B/B.5.
-6. **Phase D** — Web UI: emotion controls + cross-engine model dropdown.
+1. **Phase 0** — architecture-drift cleanup. **BLOCKING**. After this, the repo no longer advertises the rejected in-process design.
+2. **Phase A.1** — IndexTTS2 isolation refactor (engine becomes remote client, new worker `serve.py`). Largest blast radius — verify in isolation before A.2.
+3. **Test-infra fix** — `live_client` fixture + tightened upload/validation tests (can land in the same PR as A.1 since both touch the test layer).
+4. **Phase A.2** — `models/<engine>/<name>/` + `vendor/` repo-local convention + legacy-fallback warning.
+5. **Phase B** — `make install-{qwen3,indextts2}` + `make run-indextts2`.
+6. **Phase B.5** — One-shot Option-A probe to document the conflict in `docs/engines/indextts2/README.md`.
+7. **Phase C** — Unified `/model/switch` (cross-engine). Depends on A.1 (final engine shape).
+8. **Phase D** — Web UI: emotion controls + cross-engine model dropdown.
+
+**Hard rule:** do **not** start Phase C, B, or any feature work until Phase 0 lands. Otherwise we're polishing on top of a contradiction.
