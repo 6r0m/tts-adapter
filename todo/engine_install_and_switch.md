@@ -239,7 +239,7 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 - [ ] [AGENTS.md](../AGENTS.md): update the `data/` line in the project-structure block to `models/` + `vendor/` (and drop the stale `data/cache/` reference).
 - [ ] **Legacy `~/.cache/tts-adapter/` fallback warning**  -  single startup log line in the engine settings code paths when the user's configured path resolves to `~/.cache/tts-adapter/...`. One log line, never per-request. Reference the policy table above for the wording.
 
-## Phase B: `make install-{qwen3,indextts2}` + `make run-indextts2`
+## Phase B: `make install-{qwen3,indextts2}` + `make run-indextts2` [DONE]
 
 > Hyphenated targets per the policy decision above. **No positional-arg pattern.**
 
@@ -390,7 +390,7 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
   - Integration (skip if not both engines available): switch qwen3->indextts2->qwen3, verify `/health.engine` updates.
   - Integration (skip if worker not running): switch to indextts2 with no worker -> expect 503 with actionable error message.
 
-## Phase D: Web UI
+## Phase D: Web UI [DONE]
 
 - [x] [tts_adapter/web/templates_body.py](../tts_adapter/web/templates_body.py): on the Voice Clone tab, render emotion controls (audio upload / text / 8-float vector + alpha slider) **conditional on `supports_emotional_cloning`** from `/health`.
 - [x] [tts_adapter/web/templates_script.py](../tts_adapter/web/templates_script.py): the existing periodic `/health` poller (see [todo/multi_client_sync.md](multi_client_sync.md) for context) toggles the emotion controls visibility when the flag flips after a model switch.
@@ -401,7 +401,7 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
   - Failure path: 503 from `/model/switch` -> reuse the existing model-switch error toast / message component. No new error UI.
 - [x] [tts_adapter/web/templates_i18n.py](../tts_adapter/web/templates_i18n.py): add labels for emotion-mode dropdown, alpha slider, and the cross-engine switch warning ("This will unload the current engine and load...").
 
-## Phase E: Docker happy path (`make up` brings up everything that's installed)
+## Phase E: Docker happy path (`make up` brings up everything that's installed) [DONE]
 
 - [ ] **`Dockerfile.indextts2`** - new image for the worker process:
   - Base: same `nvidia/cuda` runtime as the main `Dockerfile`.
@@ -572,11 +572,11 @@ Reason: engine name, env var, docs, runtime all match (`TTS_ENGINE=indextts2`, `
 2. **Phase A.1** - IndexTTS2 isolation refactor: engine becomes `IndexTTS2RemoteEngine`, new worker `serve.py` with `/health` + `/load` + `/unload` + `/tts/clone` (lazy first-request load) + 20MB upload cap + load/infer race closed. **[DONE]**
 3. **Test-infra fix** - `live_client` fixture (context-manager close) + tightened upload/validation tests + remote engine httpx mocks + catalog/availability + rollback regression tests + `client` alias migrated to `live_client`. **[DONE]**
 4. **Phase A.2** - `models/<engine>/<name>/` + `vendor/` repo-local convention + legacy-fallback warning. **[DONE]**
-5. **Phase B** - `make install-{qwen3,indextts2}` + real `make run-indextts2` (currently stub).
+5. **Phase B** - `make install-{qwen3,indextts2}` + real `make run-indextts2` + `make clean-indextts2` + drop nested `.git` after vendor clone. **[DONE]**
 6. **Phase B.5** - One-shot Option-A probe to document the conflict in `docs/engines/indextts2/README.md`.
 7. **Phase C** - Unified `/model/switch` cross-engine swap with two-phase rollback + proactive re-warm of previous engine on target failure. Catalog vs availability split lets `/model/switch` route to indextts2 even when worker is down (returns 503 with hint, rather than 400 unknown). **[DONE]**
-8. **Phase D** - Web UI: emotion controls + cross-engine model dropdown + spinner.
-9. **Phase E** - Docker happy path: `Dockerfile.indextts2`, second compose service with `profiles: ["indextts2"]`, `make up` auto-detects via Makefile profile flag. Depends on A.1 (worker exists) and B (vendor populated).
+8. **Phase D** - Web UI: emotion controls + cross-engine model dropdown + spinner. **[DONE]**
+9. **Phase E** - Docker happy path: `Dockerfile.indextts2`, second compose service with `profiles: ["indextts2"]`, `make up` auto-detects via Makefile profile flag. **[DONE]** at code level.
 10. **Phase E.1** - Docker verification (both engines, qwen3-only, worker-died scenarios).
 
 **Hard rules:**

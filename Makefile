@@ -1,4 +1,4 @@
-.PHONY: help install install-qwen3 install-indextts2 install-indextts download-model download-indextts2 run-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build build-indextts2 build-all rebuild up down logs health shell clean indextts2 all
+.PHONY: help install install-qwen3 install-indextts2 install-indextts clean-indextts2 download-model download-indextts2 run-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build build-indextts2 build-all rebuild up down logs health shell clean indextts2 all
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -20,8 +20,9 @@ help:
 	@echo "  make tts-design text=\"...\" instruct=\"...\" - Design voice (VoiceDesign model)"
 	@echo ""
 	@echo "IndexTTS2 (separate worker process - one-time install):"
-	@echo "  make install-indextts2  - Clone upstream + isolated venv + worker deps + checkpoints (~6 GB)"
+	@echo "  make install-indextts2  - Snapshot upstream + isolated venv + worker deps + checkpoints (~6 GB)"
 	@echo "  make run-indextts2      - Start IndexTTS2 worker on :9881"
+	@echo "  make clean-indextts2    - Wipe vendor/index-tts/ (use before bumping INDEXTTS_REF)"
 	@echo "  make download-indextts2 - Re-download just the checkpoints (skip clone/venv)"
 	@echo ""
 	@echo "  make test            - Test single TTS generation"
@@ -80,14 +81,23 @@ download-indextts2:
 INDEXTTS_REF ?= main
 
 install-indextts2:
-	@echo "==> [1/5] vendor/index-tts (idempotent clone, ref=$(INDEXTTS_REF))..."
+	@echo "==> [1/5] vendor/index-tts (snapshot at ref=$(INDEXTTS_REF))..."
+	@# We vendor upstream as CODE, not as a tracked git repo. After clone+checkout
+	@# we drop .git/ entirely so:
+	@#   - VSCode doesn't show a separate Source Control entry for the nested repo
+	@#   - we save ~34 MB of upstream history we never need
+	@#   - we avoid accidentally committing into upstream's repo
+	@# To bump INDEXTTS_REF: run `make clean-indextts2` first, then re-install.
+	@# To force a re-clone: same. The `[ -d vendor/index-tts ]` guard below
+	@# means re-running install-indextts2 with a different INDEXTTS_REF is a no-op
+	@# unless you clean first - this is intentional (avoid accidental ref churn).
 	@if [ ! -d vendor/index-tts ]; then \
-	    git clone https://github.com/index-tts/index-tts vendor/index-tts; \
+	    git clone https://github.com/index-tts/index-tts vendor/index-tts \
+	        && cd vendor/index-tts && git checkout $(INDEXTTS_REF) && cd ../.. \
+	        && rm -rf vendor/index-tts/.git; \
 	else \
-	    echo "vendor/index-tts already exists - fetching latest refs"; \
-	    cd vendor/index-tts && git fetch --all --tags; \
+	    echo "vendor/index-tts already exists - skipping clone (run 'make clean-indextts2' first to bump ref)"; \
 	fi
-	cd vendor/index-tts && git checkout $(INDEXTTS_REF)
 	@echo ""
 	@echo "==> [2/5] isolated venv via upstream's official uv flow..."
 	# env -u VIRTUAL_ENV: prevents the parent shell's activated venv from
@@ -123,6 +133,19 @@ install-indextts2:
 # Alias - keep 'install-indextts' working but prefer the canonical name.
 install-indextts: install-indextts2
 	@echo "(alias) prefer 'make install-indextts2' as canonical target"
+
+# Wipe the vendored IndexTTS2 install (vendor source + isolated venv).
+# Use this before bumping INDEXTTS_REF or to recover from a broken install.
+# Does NOT touch models/indextts2/IndexTTS-2/ (the 6 GB checkpoints) -
+# use `rm -rf models/indextts2` separately if you also want those gone.
+clean-indextts2:
+	@if [ -d vendor/index-tts ]; then \
+	    echo "removing vendor/index-tts/ (~10 GB inc. isolated venv)..."; \
+	    rm -rf vendor/index-tts; \
+	    echo "done. Re-run 'make install-indextts2' to reinstall."; \
+	else \
+	    echo "vendor/index-tts/ does not exist - nothing to clean."; \
+	fi
 
 # IndexTTS2 worker process. Requires `make install-indextts2` first to populate
 # vendor/index-tts/.venv with the indextts package + worker deps.
