@@ -403,6 +403,56 @@ class Qwen3Engine:
         return False
 
     @property
+    def emotion_modes(self) -> set[str]:
+        """No emotion-with-clone support - see supports_emotional_cloning."""
+        return set()
+
+    @property
+    def supports_emotion_strength(self) -> bool:
+        return False
+
+    @property
+    def supports_cyrillic_text(self) -> bool:
+        """Qwen3 was trained on multilingual data including Russian."""
+        return True
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        """qwen_tts package importable + a usable model path resolvable.
+
+        Cheap check: import is fast (already in deps), path resolution
+        either uses TTS_QWEN3_MODEL_PATH if set or tries the HF cache for
+        the default model id. No model load.
+        """
+        try:
+            import qwen_tts  # noqa: F401
+        except ImportError:
+            return False
+        # If user set an explicit local path, just check it exists.
+        from pathlib import Path
+        try:
+            qwen3 = get_qwen3_settings()
+        except Exception:
+            return False
+        if qwen3.model_path:
+            return Path(qwen3.model_path).exists()
+        # Otherwise try the HF cache snapshot for the configured model id.
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(qwen3.model_id, local_files_only=True)
+            return True
+        except Exception:
+            return False
+
+    def is_reachable(self) -> bool:
+        """In-process engine: reachable iff installed."""
+        return self.is_installed()
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._model is not None
+
+    @property
     def supported_languages(self) -> list[str]:
         """10 official Qwen3-TTS languages plus 'Auto' for auto-detection."""
         return _SUPPORTED_LANGUAGES

@@ -155,8 +155,10 @@ curl -X POST http://localhost:9880/tts/batch \
 | `TTS_QWEN3_DTYPE` | `bfloat16` | Data type |
 | `TTS_INDEXTTS2_URL` | `http://localhost:9881` | URL of the IndexTTS2 worker process (separate venv) |
 | `TTS_INDEXTTS2_TIMEOUT` | `180` | HTTP timeout (seconds) for forwarded `/tts/clone` requests |
+| `TTS_VOXCPM2_URL` | `http://localhost:9882` | URL of the VoxCPM2 worker process (separate venv) |
+| `TTS_VOXCPM2_TIMEOUT` | `180` | HTTP timeout (seconds) for forwarded `/tts/clone` requests |
 
-**Worker-side env** (`USE_FP16`, `MODEL_DIR`, `USE_CUDA_KERNEL`, `USE_DEEPSPEED`, `USE_RANDOM`, `TRIM_SILENCE`, `PORT`) is documented in [docs/engines/indextts2/README.md](docs/engines/indextts2/README.md) - those vars belong to the worker process, not the main adapter.
+**Worker-side env** for IndexTTS2 (`USE_FP16`, `MODEL_DIR`, `USE_CUDA_KERNEL`, `USE_DEEPSPEED`, `USE_RANDOM`, `TRIM_SILENCE`, `PORT`) is documented in [docs/engines/indextts2/README.md](docs/engines/indextts2/README.md). For VoxCPM2 (`MODEL_DIR`, `OPTIMIZE`, `LOAD_DENOISER`, `PORT`) see [docs/engines/voxcpm2/README.md](docs/engines/voxcpm2/README.md). Those vars belong to the worker process, not the main adapter.
 
 ---
 

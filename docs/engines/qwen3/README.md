@@ -33,6 +33,8 @@ For RTX 4070 (12GB), use 1.7B model with bf16.
 **Limitation:** Cannot combine cloned voice with emotion control. Each model has separate capabilities:
 - Want emotion control? → Use CustomVoice (preset speakers) or VoiceDesign (create new voice)
 - Want specific person's voice? → Use Base (clone), but no emotion control
+- **Want both clone AND emotion in one call (Russian)?** → Use [VoxCPM2](../voxcpm2/README.md) (text-tag emotion, Apache-2.0)
+- **Want both clone AND emotion in one call (English/Chinese/Japanese)?** → Use [IndexTTS2](../indextts2/README.md) (3 emotion modes)
 
 ## Configuration
 

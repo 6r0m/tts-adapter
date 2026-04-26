@@ -23,6 +23,7 @@ function getModelEngine(modelOrId) {
     const id = typeof modelOrId === 'string' ? modelOrId : modelOrId?.id;
     if (!id) return 'unknown';
     if (id.startsWith('IndexTeam/') || id.includes('IndexTTS')) return 'indextts2';
+    if (id.startsWith('openbmb/') || id.includes('VoxCPM')) return 'voxcpm2';
     if (id.startsWith('Qwen/')) return 'qwen3';
     return 'unknown';
 }
@@ -363,6 +364,9 @@ async function confirmSwitch() {
         serverInfo.supports_design = data.supports_design;
         serverInfo.supports_custom_voice = data.supports_custom_voice;
         serverInfo.supports_emotional_cloning = data.supports_emotional_cloning;
+        serverInfo.emotion_modes = data.emotion_modes || [];
+        serverInfo.supports_emotion_strength = !!data.supports_emotion_strength;
+        serverInfo.supports_cyrillic_text = data.supports_cyrillic_text !== false;
 
         await checkStatus({ refreshModels: true });
         document.getElementById('modal-overlay').classList.remove('active');
@@ -443,7 +447,36 @@ function updateEmotionControls(data = serverInfo) {
         const mode = document.getElementById('clone-emotion-mode');
         if (mode) mode.value = 'none';
     }
+    // Filter the per-mode <option>s based on which modes the engine actually
+    // supports. VoxCPM2 (text-only) hides "audio" and "vector" so the user
+    // can't pick a mode the API would reject with 400.
+    filterEmotionModeOptions(data?.emotion_modes || []);
     updateEmotionModePanels();
+}
+
+function filterEmotionModeOptions(supportedModes) {
+    const select = document.getElementById('clone-emotion-mode');
+    if (!select) return;
+    const allowed = new Set(supportedModes);
+    let visibleCount = 0;
+    let firstVisible = null;
+    [...select.options].forEach(opt => {
+        if (opt.value === 'none') {
+            opt.hidden = false;
+            return;
+        }
+        const supported = allowed.has(opt.value);
+        opt.hidden = !supported;
+        if (supported) {
+            visibleCount += 1;
+            if (firstVisible === null) firstVisible = opt.value;
+        }
+    });
+    // If the currently-selected mode is no longer supported, fall back to
+    // 'none'. This avoids leaving the dropdown in a state the engine rejects.
+    if (select.value !== 'none' && !allowed.has(select.value)) {
+        select.value = visibleCount > 0 ? firstVisible : 'none';
+    }
 }
 
 function onEmotionModeChange() {
@@ -457,10 +490,17 @@ function updateEmotionModePanels() {
     document.querySelectorAll('.emotion-mode-panel').forEach(panel => {
         panel.hidden = panel.dataset.emotionMode !== mode;
     });
+    // emotion_alpha is meaningful only on engines that expose intensity
+    // (supports_emotion_strength). Otherwise hide the slider entirely so
+    // the user doesn't think it does something.
+    const alphaSupported = !!serverInfo?.supports_emotion_strength;
     const alpha = document.getElementById('clone-emotion-alpha');
     const alphaWrap = document.getElementById('clone-emotion-alpha-wrap');
-    if (alpha) alpha.disabled = !active;
-    if (alphaWrap) alphaWrap.classList.toggle('emotion-disabled', !active);
+    if (alphaWrap) {
+        alphaWrap.hidden = !alphaSupported;
+    }
+    if (alpha) alpha.disabled = !(active && alphaSupported);
+    if (alphaWrap) alphaWrap.classList.toggle('emotion-disabled', !(active && alphaSupported));
     updateEmotionAlphaValue();
 }
 
@@ -485,7 +525,12 @@ function appendEmotionFormData(form) {
     const mode = document.getElementById('clone-emotion-mode')?.value || 'none';
     if (mode === 'none') return;
 
-    form.append('emotion_alpha', document.getElementById('clone-emotion-alpha')?.value || '1.0');
+    // Only send emotion_alpha if the active engine actually exposes intensity.
+    // Otherwise the API would 400 (it rejects non-default emotion_alpha when
+    // supports_emotion_strength=False). Default 1.0 means "no override".
+    if (serverInfo.supports_emotion_strength) {
+        form.append('emotion_alpha', document.getElementById('clone-emotion-alpha')?.value || '1.0');
+    }
     if (mode === 'audio') {
         const audioFile = document.getElementById('clone-emotion-audio')?.files[0];
         if (!audioFile) throw new Error(t('error.no_emotion_audio'));

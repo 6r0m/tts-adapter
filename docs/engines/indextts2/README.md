@@ -1,7 +1,10 @@
 # IndexTTS2 Engine
 
 > **Supported languages: Chinese, English, Japanese ONLY** (no Russian, no `Auto`).
-> Sending Russian text - or `language=English` with Cyrillic in the body - returns **HTTP 400** at the API layer with a hint to switch to Qwen3. Why: upstream's text normalizer routes any non-Latin script to the Chinese tokenizer (see [vendor/index-tts/indextts/utils/front.py:105](../../../vendor/index-tts/indextts/utils/front.py)), the BPE tokenizer has no Cyrillic tokens, and the model itself is trained on CN/EN/JP audio. Even with the normalizer bypassed, output for Russian would still be garbled. For Russian use [Qwen3](../qwen3/README.md) (10 official languages including Russian).
+> Sending Russian text - or `language=English` with Cyrillic in the body - returns **HTTP 400** at the API layer with a hint to switch engines. Why: upstream's text normalizer routes any non-Latin script to the Chinese tokenizer (see [vendor/index-tts/indextts/utils/front.py:105](../../../vendor/index-tts/indextts/utils/front.py)), the BPE tokenizer has no Cyrillic tokens, and the model itself is trained on CN/EN/JP audio. Even with the normalizer bypassed, output for Russian would still be garbled.
+>
+> **For Russian + voice cloning + emotion in one call**, use [VoxCPM2](../voxcpm2/README.md) (30 languages including Russian, text-tag emotion control, Apache-2.0).
+> **For general Russian (no emotion+clone combo)**, use [Qwen3](../qwen3/README.md) (10 official languages including Russian).
 
 ## Overview
 

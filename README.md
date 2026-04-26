@@ -54,10 +54,12 @@ make install-qwen3      # Full install: deps + weights -> ./models/qwen3/<name>/
 
 See [Qwen3 Engine docs](docs/engines/qwen3/README.md#offline-mode) for details.
 
-### Add IndexTTS2 (optional - emotional voice cloning)
+### Add IndexTTS2 (optional - emotional voice cloning, EN/CN/JP only)
 
 IndexTTS2 runs as a separate worker process with its own venv (upstream dep
 pins conflict with `qwen-tts`, see [docs/engines/indextts2/README.md](docs/engines/indextts2/README.md)).
+**Russian is NOT supported by IndexTTS2** (upstream tokenizer mangles Cyrillic);
+the API rejects Russian on this engine with HTTP 400.
 
 ```bash
 make install-indextts2   # Clones upstream + isolated venv + downloads checkpoints (~6 GB)
@@ -72,7 +74,34 @@ curl -X POST http://localhost:9880/model/switch \
      -d '{"model_id":"IndexTeam/IndexTTS-2"}'
 ```
 
-The main adapter forwards `/tts/clone` requests to the worker via HTTP. Cross-engine `/model/switch` unloads the previous engine before loading the target so VRAM stays within the 4070 12 GB envelope.
+### Add VoxCPM2 (optional - **Russian emotional voice cloning**)
+
+VoxCPM2 (OpenBMB, Apr 2026, Apache-2.0) is the recommended engine for Russian
+voice cloning + emotion control in one call. Same isolated-worker pattern as
+IndexTTS2. See [docs/engines/voxcpm2/README.md](docs/engines/voxcpm2/README.md).
+
+```bash
+make install-voxcpm2   # Clones upstream + isolated venv + downloads checkpoints (~10 GB)
+
+# Then in two terminals:
+make run-voxcpm2       # VoxCPM2 worker on :9882
+make serve             # main adapter on :9880
+
+# Switch engines at runtime:
+curl -X POST http://localhost:9880/model/switch \
+     -H 'content-type: application/json' \
+     -d '{"model_id":"openbmb/VoxCPM2"}'
+
+# Russian clone + emotion in one call:
+curl -X POST http://localhost:9880/tts/clone \
+     -F 'text=Привет, я очень рад тебя видеть' \
+     -F 'language=Russian' \
+     -F 'reference_audio=@voice.wav' \
+     -F 'emotion_text=very happy, cheerful, smiling tone' \
+     --output happy.wav
+```
+
+The main adapter forwards `/tts/clone` requests to the appropriate worker via HTTP. Cross-engine `/model/switch` unloads the previous engine before loading the target so VRAM stays within the 4070 12 GB envelope.
 
 ## Web UI
 
@@ -177,7 +206,8 @@ curl http://localhost:9880/health
 | [Architecture](docs/architecture.md) | Design decisions, engine protocol |
 | [API Reference](docs/api-reference.md) | Endpoint specs, request/response formats |
 | [Qwen3 Engine](docs/engines/qwen3/README.md) | Model variants, speakers, setup |
-| [IndexTTS2 Engine](docs/engines/indextts2/README.md) | Voice cloning + emotion control |
+| [VoxCPM2 Engine](docs/engines/voxcpm2/README.md) | Russian voice cloning + text-tag emotion control |
+| [IndexTTS2 Engine](docs/engines/indextts2/README.md) | EN/CN/JP voice cloning + rich emotion control |
 | [AGENTS.md](AGENTS.md) | Project instructions for AI agents |
 
 ## Engines
@@ -186,8 +216,9 @@ curl http://localhost:9880/health
 
 | Engine | Status | How it runs | Languages | Description |
 |--------|--------|-------------|-----------|-------------|
-| [Qwen3-TTS](docs/engines/qwen3/README.md) | Ready | In-process | 10 + Auto (Russian, Chinese, English, Japanese, Korean, German, French, Portuguese, Spanish, Italian) | 1.7B/0.6B preset speakers, voice cloning, `instruct` style |
-| [IndexTTS2](docs/engines/indextts2/README.md) | Ready (local/Docker path; requires installed worker) | Isolated worker on `:9881` | Chinese, English, Japanese **only** (no Russian) | Emotional voice cloning (audio / text / 8-vector + alpha) |
+| [Qwen3-TTS](docs/engines/qwen3/README.md) | Ready | In-process | 10 + Auto (Russian, Chinese, English, Japanese, Korean, German, French, Portuguese, Spanish, Italian) | 1.7B/0.6B preset speakers, voice cloning OR `instruct` style (never both) |
+| [VoxCPM2](docs/engines/voxcpm2/README.md) | Ready (local/Docker path; requires installed worker) | Isolated worker on `:9882` | 23 + Auto (incl. **Russian**, English, Chinese, Japanese, Korean, ...) | **Russian-capable** emotional voice cloning (text-tag style); Apache-2.0 |
+| [IndexTTS2](docs/engines/indextts2/README.md) | Ready (local/Docker path; requires installed worker) | Isolated worker on `:9881` | Chinese, English, Japanese **only** (no Russian) | Rich emotional voice cloning (audio / text / 8-vector + alpha) |
 
 **Language gate:** the API rejects unsupported language requests with `400` + actionable hint. The Web UI's language dropdown is populated from the active engine's `supported_languages` (via `/health`), so users only see what will actually work. Russian preference is honored when the active engine supports it; otherwise the UI auto-falls-back and shows an inline hint suggesting the engine switch.
 

@@ -1,4 +1,4 @@
-.PHONY: help install install-qwen3 install-indextts2 install-indextts clean-indextts2 download-model download-indextts2 run-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build build-indextts2 build-all verify-indextts2-docker rebuild up down logs health shell clean indextts2 all
+.PHONY: help install install-qwen3 install-indextts2 install-indextts install-voxcpm2 clean-indextts2 clean-voxcpm2 download-model download-indextts2 download-voxcpm2 run-indextts2 run-voxcpm2 serve server tts tts-clone tts-clone-emotion tts-design test build build-indextts2 build-voxcpm2 build-all verify-indextts2-docker verify-voxcpm2-docker rebuild up down logs health shell clean indextts2 voxcpm2 all
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -25,14 +25,22 @@ help:
 	@echo "  make clean-indextts2    - Wipe vendor/index-tts/ (use before bumping INDEXTTS_REF)"
 	@echo "  make download-indextts2 - Re-download just the checkpoints (skip clone/venv)"
 	@echo ""
+	@echo "VoxCPM2 (Russian emotional cloning - separate worker process):"
+	@echo "  make install-voxcpm2    - Snapshot upstream + isolated venv + worker deps + checkpoints (~10 GB)"
+	@echo "  make run-voxcpm2        - Start VoxCPM2 worker on :9882"
+	@echo "  make clean-voxcpm2      - Wipe vendor/voxcpm/ (use before bumping VOXCPM_REF)"
+	@echo "  make download-voxcpm2   - Re-download just the checkpoints (skip clone/venv)"
+	@echo ""
 	@echo "  make test            - Test single TTS generation"
 	@echo "  make test batch      - Test batch TTS generation"
 	@echo ""
 	@echo "Docker (auto-detects engines installed in models/):"
-	@echo "  make build           - Build images for installed engines (Qwen3 + IndexTTS2 if present)"
+	@echo "  make build           - Build images for installed engines (Qwen3 + IndexTTS2 + VoxCPM2 if present)"
 	@echo "  make build-indextts2 - Build only the IndexTTS2 worker image"
-	@echo "  make build-all       - Build both images regardless of install state"
-	@echo "  make verify-indextts2-docker - Quick container import smoke test (catches ABI/.pth issues)"
+	@echo "  make build-voxcpm2   - Build only the VoxCPM2 worker image"
+	@echo "  make build-all       - Build all images regardless of install state"
+	@echo "  make verify-indextts2-docker - Quick container import smoke test (catches ABI issues)"
+	@echo "  make verify-voxcpm2-docker   - Quick container import smoke test (catches ABI issues)"
 	@echo "  make rebuild         - Force rebuild with no cache"
 	@echo "  make up              - Start everything that's installed (auto-adds --profile indextts2)"
 	@echo "  make down            - Stop containers"
@@ -183,6 +191,81 @@ clean-indextts2:
 	    echo "vendor/index-tts/ does not exist - nothing to clean."; \
 	fi
 
+# Re-download only the VoxCPM2 checkpoints (skip clone/venv).
+download-voxcpm2:
+	uv run python scripts/voxcpm2/download_model.py
+
+# Full VoxCPM2 install: clone upstream, set up isolated venv, install worker
+# deps, download checkpoints. Idempotent - safe to re-run.
+# Why two processes: see docs/engines/voxcpm2/README.md.
+#
+# Pin a specific upstream ref for reproducible installs:
+#   make install-voxcpm2 VOXCPM_REF=v1.0.0
+# Defaults to `main` for exploration; pin before relying on it.
+VOXCPM_REF ?= main
+
+install-voxcpm2:
+	@echo "==> [1/4] vendor/voxcpm (snapshot at ref=$(VOXCPM_REF))..."
+	@if [ ! -d vendor/voxcpm ]; then \
+	    git clone https://github.com/OpenBMB/VoxCPM vendor/voxcpm \
+	        && cd vendor/voxcpm && git checkout $(VOXCPM_REF) && cd ../.. \
+	        && rm -rf vendor/voxcpm/.git; \
+	else \
+	    echo "vendor/voxcpm already exists - skipping clone (run 'make clean-voxcpm2' first to bump ref)"; \
+	fi
+	@echo ""
+	@echo "==> [2/4] isolated venv (python 3.10) + editable install of voxcpm + worker deps..."
+	# env -u VIRTUAL_ENV: prevents the parent shell's activated venv from
+	# leaking in (uv would otherwise install into the WRONG venv).
+	@if [ ! -d vendor/voxcpm/.venv ]; then \
+	    cd vendor/voxcpm && env -u VIRTUAL_ENV uv venv .venv --python 3.10; \
+	fi
+	cd vendor/voxcpm && env -u VIRTUAL_ENV VIRTUAL_ENV=$$(pwd)/.venv uv pip install -e . fastapi uvicorn 'python-multipart' soundfile python-dotenv
+	@echo ""
+	@echo "==> [3/4] VoxCPM2 checkpoints (~10 GB, idempotent resume)..."
+	uv run python scripts/voxcpm2/download_model.py
+	@echo ""
+	@echo "==> [4/4] verify host vendor venv import + checkpoint load path..."
+	@cd vendor/voxcpm && env -u VIRTUAL_ENV .venv/bin/python -c \
+	    "import voxcpm; print('  host import OK:', voxcpm.__file__)" \
+	    || ( echo "FATAL: vendor venv import broke - check uv pip install output above"; exit 1 )
+	@echo ""
+	@echo "============================================================"
+	@echo "VoxCPM2 install complete. Add to .env:"
+	@echo "  TTS_VOXCPM2_URL=http://localhost:9882"
+	@echo "  TTS_VOXCPM2_TIMEOUT=180"
+	@echo ""
+	@echo "Then in two terminals:"
+	@echo "  make run-voxcpm2     # VoxCPM2 worker on :9882"
+	@echo "  make serve           # main adapter on :9880"
+	@echo ""
+	@echo "Switch to VoxCPM2 at runtime:"
+	@echo "  curl -X POST http://localhost:9880/model/switch \\"
+	@echo "       -H 'content-type: application/json' \\"
+	@echo "       -d '{\"model_id\":\"openbmb/VoxCPM2\"}'"
+	@echo "============================================================"
+
+# Wipe the vendored VoxCPM2 install (vendor source + isolated venv + checkpoints).
+# Use this before bumping VOXCPM_REF or to recover from a broken install.
+# This DOES include the checkpoints (vendor/voxcpm/checkpoints/) since they
+# live under vendor/voxcpm/. To preserve them, move them out first.
+clean-voxcpm2:
+	@if [ -d vendor/voxcpm ]; then \
+	    echo "removing vendor/voxcpm/ (~14 GB inc. isolated venv + checkpoints)..."; \
+	    rm -rf vendor/voxcpm; \
+	    echo "done. Re-run 'make install-voxcpm2' to reinstall."; \
+	else \
+	    echo "vendor/voxcpm/ does not exist - nothing to clean."; \
+	fi
+
+# VoxCPM2 worker process. Requires `make install-voxcpm2` first.
+run-voxcpm2:
+	@if [ ! -d vendor/voxcpm ]; then \
+	    echo "vendor/voxcpm not found. Run 'make install-voxcpm2' to set up the worker."; \
+	    exit 1; \
+	fi
+	cd vendor/voxcpm && env -u VIRTUAL_ENV .venv/bin/python ../../scripts/voxcpm2/serve.py
+
 # IndexTTS2 worker process. Requires `make install-indextts2` first to populate
 # vendor/index-tts/.venv with the indextts package + worker deps.
 run-indextts2:
@@ -315,15 +398,26 @@ INDEXTTS2_READY := $(shell \
     test -x vendor/index-tts/.venv/bin/python && \
     echo yes || echo no)
 
-# All-profiles set used for `down` / `logs all` / cleanup - we want to STOP
-# any running indextts2 worker even if the host install state has since
-# changed (e.g., user moved/deleted models or vendor after `make up`).
-COMPOSE_PROFILES_ALL := --profile gpu --profile indextts2
+# Same logic for voxcpm2: BOTH the checkpoints AND the bind-mounted vendor venv
+# must exist. Checkpoints can live under vendor/voxcpm/checkpoints/ (default
+# from the download script) or under models/voxcpm2/.
+VOXCPM2_READY := $(shell \
+    ( test -d vendor/voxcpm/checkpoints/VoxCPM2 || test -d models/voxcpm2/VoxCPM2 ) && \
+    test -x vendor/voxcpm/.venv/bin/python && \
+    echo yes || echo no)
 
-# Up-time profile selection: only activate indextts2 if it's actually ready.
+# All-profiles set used for `down` / `logs all` / cleanup - we want to STOP
+# any running worker even if the host install state has since changed
+# (e.g., user moved/deleted models or vendor after `make up`).
+COMPOSE_PROFILES_ALL := --profile gpu --profile indextts2 --profile voxcpm2
+
+# Up-time profile selection: only activate worker profiles if they're actually ready.
 COMPOSE_PROFILES := --profile gpu
 ifeq ($(INDEXTTS2_READY),yes)
 COMPOSE_PROFILES += --profile indextts2
+endif
+ifeq ($(VOXCPM2_READY),yes)
+COMPOSE_PROFILES += --profile voxcpm2
 endif
 
 build:
@@ -333,6 +427,10 @@ build:
 # Build only the IndexTTS2 worker image (skips the main adapter rebuild).
 build-indextts2:
 	$(DOCKER_COMPOSE) --profile indextts2 build adapter-tts-indextts2
+
+# Build only the VoxCPM2 worker image (skips the main adapter rebuild).
+build-voxcpm2:
+	$(DOCKER_COMPOSE) --profile voxcpm2 build adapter-tts-voxcpm2
 
 # Verify the worker container can import indextts + torch using the
 # bind-mounted vendor venv. Catches .pth-relativization failures, ABI
@@ -348,9 +446,20 @@ verify-indextts2-docker:
 	    /work/vendor/index-tts/.venv/bin/python -c \
 	    "import indextts, torch; print('indextts:', indextts.__file__); print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
 
-# Build both images.
+# Same smoke test for VoxCPM2 - import voxcpm + torch from the bind-mounted venv.
+verify-voxcpm2-docker:
+	@if [ "$(VOXCPM2_READY)" != "yes" ]; then \
+	    echo "VoxCPM2 not ready - run make install-voxcpm2 first"; \
+	    exit 1; \
+	fi
+	$(DOCKER_COMPOSE) --profile voxcpm2 run --rm --entrypoint "" \
+	    adapter-tts-voxcpm2 \
+	    /work/vendor/voxcpm/.venv/bin/python -c \
+	    "import voxcpm, torch; print('voxcpm:', voxcpm.__file__); print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
+
+# Build all images.
 build-all:
-	$(DOCKER_COMPOSE) --profile gpu --profile indextts2 build
+	$(DOCKER_COMPOSE) --profile gpu --profile indextts2 --profile voxcpm2 build
 
 rebuild:
 	$(DOCKER_COMPOSE) $(COMPOSE_PROFILES) build --no-cache --pull
@@ -364,6 +473,14 @@ up:
 	    echo "  vendor/index-tts/.venv/bin/python  ($$([ -x vendor/index-tts/.venv/bin/python ] && echo OK || echo MISSING))"; \
 	    echo "Run: make install-indextts2"; \
 	fi
+	@if [ "$(VOXCPM2_READY)" = "yes" ]; then \
+	    echo "VoxCPM2 ready (checkpoints + vendor venv) - including worker"; \
+	else \
+	    echo "VoxCPM2 not ready - skipping worker. Need both:"; \
+	    echo "  vendor/voxcpm/checkpoints/VoxCPM2/  ($$([ -d vendor/voxcpm/checkpoints/VoxCPM2 ] && echo OK || echo MISSING))"; \
+	    echo "  vendor/voxcpm/.venv/bin/python      ($$([ -x vendor/voxcpm/.venv/bin/python ] && echo OK || echo MISSING))"; \
+	    echo "Run: make install-voxcpm2"; \
+	fi
 	$(DOCKER_COMPOSE) $(COMPOSE_PROFILES) up -d --no-build
 	@sleep 2
 	@echo "Started. Run: make health"
@@ -373,20 +490,22 @@ up:
 down:
 	$(DOCKER_COMPOSE) $(COMPOSE_PROFILES_ALL) down
 
-# `make logs` -> main adapter; `make logs indextts2` -> worker; `make logs all` -> both.
+# `make logs` -> main adapter; `make logs indextts2|voxcpm2` -> worker; `make logs all` -> all.
 logs:
 	@$(eval LOG_TARGET := $(filter-out $@,$(MAKECMDGOALS)))
 	@if [ "$(LOG_TARGET)" = "indextts2" ]; then \
 	    $(DOCKER_COMPOSE) --profile indextts2 logs -f adapter-tts-indextts2; \
+	elif [ "$(LOG_TARGET)" = "voxcpm2" ]; then \
+	    $(DOCKER_COMPOSE) --profile voxcpm2 logs -f adapter-tts-voxcpm2; \
 	elif [ "$(LOG_TARGET)" = "all" ]; then \
 	    $(DOCKER_COMPOSE) $(COMPOSE_PROFILES_ALL) logs -f; \
 	else \
 	    $(DOCKER_COMPOSE) --profile gpu logs -f adapter-tts; \
 	fi
 
-# No-op stubs for the positional args used by `make logs [indextts2|all]` and
+# No-op stubs for the positional args used by `make logs [indextts2|voxcpm2|all]` and
 # `make test [batch]` so Make doesn't try to build them as real targets.
-all indextts2:
+all indextts2 voxcpm2:
 	@:
 
 health:
@@ -395,6 +514,10 @@ health:
 	@if [ "$(INDEXTTS2_READY)" = "yes" ]; then \
 	    echo "indextts2 worker (:9881):"; \
 	    curl -sf http://localhost:9881/health && echo "" || echo "FAIL"; \
+	fi
+	@if [ "$(VOXCPM2_READY)" = "yes" ]; then \
+	    echo "voxcpm2 worker (:9882):"; \
+	    curl -sf http://localhost:9882/health && echo "" || echo "FAIL"; \
 	fi
 
 shell:

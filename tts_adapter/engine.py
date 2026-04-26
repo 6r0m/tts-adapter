@@ -95,9 +95,77 @@ class TTSEngine(Protocol):
     def supports_emotional_cloning(self) -> bool:
         """Whether this engine can combine voice cloning with emotion control.
 
-        Engines that return False MUST be rejected at the API layer when
-        emotion params are present - never silently ignored.
+        Convenience flag derived from `emotion_modes`. True iff the engine
+        supports at least one emotion input mode. Routes still enforce
+        per-mode rejection via `emotion_modes` so a "text-only" engine
+        rejects `emotion_audio` even though `supports_emotional_cloning=True`.
         """
+        ...
+
+    @property
+    def emotion_modes(self) -> set[str]:
+        """Which emotion input modes this engine accepts.
+
+        Subset of {"audio", "text", "vector"}. Empty set = no emotion
+        support. Routes reject per-mode with 400 if the requested mode
+        isn't in this set, so a single-mode engine like VoxCPM2 ({"text"})
+        rejects emotion_audio without silently dropping it.
+        """
+        ...
+
+    @property
+    def supports_emotion_strength(self) -> bool:
+        """Whether emotion_alpha (intensity in [0.0, 1.0]) is meaningful.
+
+        IndexTTS2 has emo_alpha; VoxCPM2 does not (only cfg_value, which
+        isn't a clean intensity knob). Routes 400-reject non-default
+        emotion_alpha when this is False, so users don't think they're
+        controlling intensity when they're not.
+        """
+        ...
+
+    @property
+    def supports_cyrillic_text(self) -> bool:
+        """Whether the engine's tokenizer + acoustic model handle Cyrillic.
+
+        IndexTTS2's normalizer routes any non-Latin text to the Chinese
+        tokenizer (front.py:use_chinese), garbling Russian/Ukrainian/Bulgarian.
+        Routes use this flag to gate the text-script bypass (e.g. someone
+        sends `language=English` with Cyrillic body), independent of which
+        languages the engine claims to support.
+
+        Cyrillic includes more than Russian - do NOT derive this from
+        `"Russian" in supported_languages`.
+        """
+        ...
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        """Whether this engine's files are on disk.
+
+        MUST be cheap: filesystem stat only. No imports of heavy libs,
+        no GPU touch, no HTTP calls. For remote workers this checks the
+        vendor venv + checkpoint dir; for in-process engines it checks
+        the importable package + model path.
+
+        Distinct from `is_reachable()` (worker /health responds) and
+        `is_loaded` (warmup completed).
+        """
+        ...
+
+    def is_reachable(self) -> bool:
+        """Whether the engine's backend is currently callable.
+
+        For in-process engines this equals `is_installed()`. For remote
+        workers this pings /health with a short timeout. Used by /engines
+        and /model/switch to surface 503 with a "start the worker" hint
+        instead of a confusing 500.
+        """
+        ...
+
+    @property
+    def is_loaded(self) -> bool:
+        """Whether the model is currently warmed up in memory."""
         ...
 
     @property

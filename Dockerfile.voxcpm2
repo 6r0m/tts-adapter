@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1
+
+# VoxCPM2 worker image - THIN bind-mount variant.
+#
+# We don't bake torch / transformers / voxcpm into this image. Instead, the
+# host's `vendor/voxcpm/` (built once via `make install-voxcpm2`) is bind-mounted
+# at /work/vendor/voxcpm/ by compose. That gives us:
+#
+#   - One single source of truth for the vendor venv (host)
+#   - Image stays ~1 GB instead of ~12 GB (no duplicated torch/CUDA wheels)
+#   - Build is ~1-2 minutes instead of 30+ minutes
+#   - `make install-voxcpm2` updates the host vendor; container picks it up on next start
+#
+# ABI/host coupling we accept (verified during install):
+#   - Host glibc must match container glibc (Ubuntu 22.04 = glibc 2.35)
+#   - Host venv's python interpreter (`/usr/local/bin/python`) must exist in
+#     the container at the same path - we install python3.10 + symlink below
+#   - Torch wheels in the venv carry their own CUDA libs (nvidia-cudnn-cu12 etc),
+#     so the system CUDA in this base image just needs to be compatible
+
+ARG REGISTRY=docker.io
+FROM ${REGISTRY}/nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04 AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPYCACHEPREFIX=/tmp/pycache
+
+# Minimal system deps:
+#   - python3.10: matches host python (3.10.12) so the bind-mounted venv works
+#   - tini: clean PID 1 / signal handling
+#   - curl: healthcheck
+#   - libsndfile1 + ffmpeg: VoxCPM2 uses soundfile + librosa for audio I/O
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    python3.10-distutils \
+    python3.10-venv \
+    tini \
+    curl \
+    ca-certificates \
+    libsndfile1 \
+    ffmpeg \
+ && rm -rf /var/lib/apt/lists/* \
+ && ln -sf /usr/bin/python3.10 /usr/local/bin/python \
+ && ln -sf /usr/bin/python3.10 /usr/local/bin/python3
+
+# Non-root user
+ARG USER=app
+ARG UID=10001
+RUN useradd -m -u ${UID} -s /bin/bash ${USER} \
+ && install -d -o ${UID} -g ${UID} \
+       /work /work/vendor /work/models /work/scripts/voxcpm2 /work/tts_adapter \
+       /home/${USER}/.cache/huggingface
+
+# Worker script + the two cross-venv-safe helper modules from the main adapter.
+# These are TINY (a few KB) - everything heavy lives in the bind-mounted venv.
+COPY --chown=${UID}:${UID} scripts/voxcpm2/serve.py /work/scripts/voxcpm2/serve.py
+COPY --chown=${UID}:${UID} tts_adapter/__init__.py /work/tts_adapter/__init__.py
+COPY --chown=${UID}:${UID} tts_adapter/audio_utils.py /work/tts_adapter/audio_utils.py
+COPY --chown=${UID}:${UID} tts_adapter/gpu_utils.py /work/tts_adapter/gpu_utils.py
+
+ENV HF_HOME=/home/app/.cache/huggingface \
+    TTS_VOXCPM2_MODEL_DIR=/work/vendor/voxcpm/checkpoints/VoxCPM2 \
+    TTS_VOXCPM2_PORT=9882 \
+    TTS_VOXCPM2_LOAD_DENOISER=false
+
+USER ${USER}
+WORKDIR /work
+EXPOSE 9882
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:9882/health || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# Use the bind-mounted venv's python directly. If the venv isn't mounted (host
+# forgot `make install-voxcpm2` first), this fails immediately at startup
+# with a clear ENOENT - better than mysterious import errors later.
+CMD ["/work/vendor/voxcpm/.venv/bin/python", "/work/scripts/voxcpm2/serve.py"]

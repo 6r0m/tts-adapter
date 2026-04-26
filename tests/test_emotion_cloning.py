@@ -546,7 +546,7 @@ class TestEmotionalCloneValidation:
         wav = _minimal_wav()
         response = live_client.post(
             "/tts/clone",
-            data={"text": "test", "emotion_text": "angry", "emotion_vector": "0,0,0.8,0,0,0,0,0"},
+            data={"text": "test", "language": "English", "emotion_text": "angry", "emotion_vector": "0,0,0.8,0,0,0,0,0"},
             files={"reference_audio": ("ref.wav", wav, "audio/wav")},
         )
         assert response.status_code == 400
@@ -557,7 +557,7 @@ class TestEmotionalCloneValidation:
         wav = _minimal_wav()
         response = live_client.post(
             "/tts/clone",
-            data={"text": "test", "emotion_text": "angry", "emotion_alpha": "1.5"},
+            data={"text": "test", "language": "English", "emotion_text": "angry", "emotion_alpha": "1.5"},
             files={"reference_audio": ("ref.wav", wav, "audio/wav")},
         )
         assert response.status_code == 400
@@ -568,7 +568,7 @@ class TestEmotionalCloneValidation:
         wav = _minimal_wav()
         response = live_client.post(
             "/tts/clone",
-            data={"text": "test", "emotion_vector": "1,2,3"},
+            data={"text": "test", "language": "English", "emotion_vector": "1,2,3"},
             files={"reference_audio": ("ref.wav", wav, "audio/wav")},
         )
         assert response.status_code == 400
@@ -602,7 +602,7 @@ class TestEmotionalCloneHappyPath:
         wav = self._real_wav()
         response = live_client.post(
             "/tts/clone",
-            data={"text": "test", "emotion_text": "very excited", "emotion_alpha": "0.6"},
+            data={"text": "test", "language": "English", "emotion_text": "very excited", "emotion_alpha": "0.6"},
             files={"reference_audio": ("ref.wav", wav, "audio/wav")},
             timeout=180.0,
         )
@@ -615,7 +615,7 @@ class TestEmotionalCloneHappyPath:
         wav = self._real_wav()
         response = live_client.post(
             "/tts/clone",
-            data={"text": "test", "emotion_vector": "0,0,0.8,0,0,0,0,0", "emotion_alpha": "0.7"},
+            data={"text": "test", "language": "English", "emotion_vector": "0,0,0.8,0,0,0,0,0", "emotion_alpha": "0.7"},
             files={"reference_audio": ("ref.wav", wav, "audio/wav")},
             timeout=180.0,
         )

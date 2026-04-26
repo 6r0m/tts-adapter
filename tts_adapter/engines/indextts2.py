@@ -36,6 +36,9 @@ _MODEL_INFO = ModelInfo(
     supports_emotional_cloning=True,
     supports_design=False,
     supports_custom_voice=False,
+    emotion_modes=["audio", "text", "vector"],
+    supports_emotion_strength=True,
+    supports_cyrillic_text=False,
     supported_languages=_SUPPORTED_LANGUAGES,
 )
 
@@ -247,6 +250,52 @@ class IndexTTS2RemoteEngine:
     @property
     def supports_emotional_cloning(self) -> bool:
         return True
+
+    @property
+    def emotion_modes(self) -> set[str]:
+        """Audio + text + 8-dim vector - upstream IndexTTS2 supports all 3."""
+        return {"audio", "text", "vector"}
+
+    @property
+    def supports_emotion_strength(self) -> bool:
+        """Upstream `emo_alpha` is real and meaningful in [0, 1]."""
+        return True
+
+    @property
+    def supports_cyrillic_text(self) -> bool:
+        """IndexTTS2 cannot. Upstream's normalizer routes any non-Latin text
+        to the Chinese tokenizer (vendor/index-tts/indextts/utils/front.py:105),
+        garbling Cyrillic. The /tts/clone route uses this flag to gate the
+        text-script bypass (e.g. language=English + Cyrillic body)."""
+        return False
+
+    @classmethod
+    def is_installed(cls) -> bool:
+        """Vendor venv + checkpoint dir present. No worker ping (that's is_reachable)."""
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        venv = repo_root / "vendor" / "index-tts" / ".venv" / "bin" / "python"
+        if not venv.exists():
+            return False
+        # Configured model dir (worker-side env var); fall back to repo-local default.
+        import os
+        model_dir = os.environ.get("TTS_INDEXTTS2_MODEL_DIR") or str(
+            repo_root / "models" / "indextts2" / "IndexTTS-2"
+        )
+        return Path(model_dir).exists()
+
+    def is_reachable(self) -> bool:
+        """Worker /health responds within ~2 s."""
+        return self._is_healthy()
+
+    @property
+    def is_loaded(self) -> bool:
+        """Worker reports model_loaded=True. Best-effort - returns False on any error."""
+        try:
+            resp = self._get_client().get(f"{self._url}/health", timeout=self._health_timeout)
+            return resp.status_code == 200 and bool(resp.json().get("model_loaded"))
+        except Exception:
+            return False
 
     @property
     def supported_languages(self) -> list[str]:

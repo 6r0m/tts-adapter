@@ -13,6 +13,8 @@ from fastapi.responses import Response
 
 from ..config import get_settings
 from ..contract import (
+    EngineInfo,
+    EnginesResponse,
     HealthResponse,
     ModelsResponse,
     SwitchModelRequest,
@@ -46,6 +48,25 @@ def get_engine() -> TTSEngine:
     return _engine
 
 
+def _legacy_cache_env_vars() -> dict[str, str]:
+    """Build the per-engine legacy-path env-var mapping dynamically.
+
+    Each engine that uses a local model path follows the convention
+    `TTS_<NAME>_MODEL_PATH` (qwen3) or `TTS_<NAME>_MODEL_DIR` (worker
+    engines). We probe both per registered engine so adding a new engine
+    doesn't require editing this function.
+    """
+    out: dict[str, str] = {}
+    for name in _ENGINES.keys():
+        prefix = f"TTS_{name.upper()}_"
+        for suffix in ("MODEL_PATH", "MODEL_DIR"):
+            var = prefix + suffix
+            val = os.environ.get(var, "")
+            if val:
+                out[var] = val
+    return out
+
+
 def _warn_if_legacy_cache_path() -> None:
     """Emit ONE warning per startup if any engine's configured path lives under
     the legacy ~/.cache/tts-adapter/ tree. Never per-request.
@@ -53,13 +74,8 @@ def _warn_if_legacy_cache_path() -> None:
     Removal target: next minor release.
     """
     legacy = str(_LEGACY_CACHE_DIR.expanduser().resolve())
-    candidates = {
-        "TTS_QWEN3_MODEL_PATH": os.environ.get("TTS_QWEN3_MODEL_PATH", ""),
-        "TTS_INDEXTTS2_MODEL_DIR": os.environ.get("TTS_INDEXTTS2_MODEL_DIR", ""),
-    }
+    candidates = _legacy_cache_env_vars()
     for var, raw in candidates.items():
-        if not raw:
-            continue
         try:
             resolved = str(Path(raw).expanduser().resolve())
         except OSError:
@@ -108,8 +124,65 @@ def health() -> HealthResponse:
         supports_design=engine.supports_design,
         supports_custom_voice=engine.supports_custom_voice,
         supports_emotional_cloning=engine.supports_emotional_cloning,
+        emotion_modes=sorted(engine.emotion_modes),
+        supports_emotion_strength=engine.supports_emotion_strength,
+        supports_cyrillic_text=engine.supports_cyrillic_text,
         supported_languages=engine.supported_languages,
     )
+
+
+def _engine_info(name: str, engine_cls: type, *, active_name: str) -> EngineInfo:
+    """Build an EngineInfo without warming up the engine.
+
+    Constructs a lightweight instance just to query capability properties.
+    Capability props don't touch GPU/network. is_installed is a classmethod
+    (cheap filesystem stat). is_reachable can ping the worker (~2 s timeout).
+    is_loaded is the live state of the active engine ONLY - other engines
+    return False even if their workers are up but unselected (the main
+    adapter's idea of "loaded" tracks our chosen engine).
+    """
+    is_active = name == active_name
+    instance = get_engine() if is_active else engine_cls()
+    try:
+        installed = engine_cls.is_installed()
+    except Exception:
+        installed = False
+    try:
+        reachable = instance.is_reachable()
+    except Exception:
+        reachable = False
+    try:
+        loaded = bool(instance.is_loaded) if is_active else False
+    except Exception:
+        loaded = False
+    return EngineInfo(
+        name=name,
+        installed=installed,
+        reachable=reachable,
+        loaded=loaded,
+        active=is_active,
+        supports_cloning=instance.supports_cloning,
+        supports_design=instance.supports_design,
+        supports_custom_voice=instance.supports_custom_voice,
+        supports_emotional_cloning=instance.supports_emotional_cloning,
+        emotion_modes=sorted(instance.emotion_modes),
+        supports_emotion_strength=instance.supports_emotion_strength,
+        supports_cyrillic_text=instance.supports_cyrillic_text,
+        supported_languages=instance.supported_languages,
+    )
+
+
+@app.get("/engines", response_model=EnginesResponse)
+def list_engines() -> EnginesResponse:
+    """List all registered engines + their installation/reachability/capability state.
+
+    Drives the UI engine dropdown (only show installed AND reachable engines)
+    and lets clients route around uninstalled engines without having to know
+    their names a priori.
+    """
+    active = get_engine().engine_name
+    engines = [_engine_info(name, cls, active_name=active) for name, cls in _ENGINES.items()]
+    return EnginesResponse(active=active, engines=engines)
 
 
 def _catalog_index() -> dict[str, str]:
@@ -160,8 +233,48 @@ def _switch_response(engine: TTSEngine, message: str) -> SwitchModelResponse:
         supports_design=engine.supports_design,
         supports_custom_voice=engine.supports_custom_voice,
         supports_emotional_cloning=engine.supports_emotional_cloning,
+        emotion_modes=sorted(engine.emotion_modes),
+        supports_emotion_strength=engine.supports_emotion_strength,
+        supports_cyrillic_text=engine.supports_cyrillic_text,
         supported_languages=engine.supported_languages,
     )
+
+
+def _suggest_emotional_engine() -> str | None:
+    """Find the first installed engine that supports emotional cloning.
+
+    Used to make the "current engine doesn't support X" error message
+    actionable - dynamic instead of hardcoded "switch to indextts2".
+    Returns the engine name (e.g. "voxcpm2") or None if no installed
+    engine supports it.
+    """
+    for name, cls in _ENGINES.items():
+        try:
+            if not cls.is_installed():
+                continue
+            instance = cls()
+            if instance.supports_emotional_cloning:
+                return name
+        except Exception:
+            continue
+    return None
+
+
+def _suggest_engine_for_language(language: str) -> str | None:
+    """Find the first installed engine whose supported_languages includes `language`.
+
+    Lets the language-rejection 400 say "switch to qwen3" or "switch to voxcpm2"
+    based on what's actually installed, instead of always recommending qwen3.
+    """
+    for name, cls in _ENGINES.items():
+        try:
+            if not cls.is_installed():
+                continue
+            if language in cls().supported_languages:
+                return name
+        except Exception:
+            continue
+    return None
 
 
 @app.get("/models", response_model=ModelsResponse)
@@ -221,9 +334,28 @@ def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
         return _switch_response(current, f"Switched to {req.model_id}")
 
     # Cross-engine swap. Two-phase to keep _engine consistent on failure.
+    # Step 0: gate on installation state. If the target engine isn't installed,
+    # return 400 with the exact install command - no point unloading the
+    # current engine just to fail the next step with a confusing error.
+    target_cls = _ENGINES[target_engine_name]
+    try:
+        if not target_cls.is_installed():
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f'Engine "{target_engine_name}" is not installed. '
+                    f'Run: make install-{target_engine_name}'
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # is_installed() should never raise, but be defensive.
+        pass
+
     # Step 1: build the target engine (cheap - no model load happens in __init__).
     try:
-        target_engine = _ENGINES[target_engine_name]()
+        target_engine = target_cls()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to construct {target_engine_name}: {e}")
 
@@ -390,36 +522,57 @@ def _looks_cyrillic(text: str) -> bool:
     return bool(_CYRILLIC_RE.search(text))
 
 
+def _switch_hint(target_engine: str | None) -> str:
+    """Render an actionable hint pointing at a switchable model on `target_engine`.
+
+    Returns empty string if no engine is suggested (caller can omit the hint).
+    """
+    if not target_engine:
+        return ""
+    # Pick any model id this engine knows about - first catalog entry is fine.
+    try:
+        cls = _ENGINES[target_engine]
+        models = cls().catalog_models()
+        if models:
+            mid = models[0].id
+            return (
+                f' Switch to {target_engine}: POST /model/switch with model_id="{mid}".'
+            )
+    except Exception:
+        pass
+    return f" Switch to TTS_ENGINE={target_engine}."
+
+
 def _validate_language(engine: TTSEngine, language: str, *, text: str | None = None) -> None:
     """Reject unsupported language for the active engine. Two-layer check:
 
-    1. `language` must be in `engine.supported_languages` (hard gate)
-    2. For engines that can't handle Cyrillic text (currently only indextts2):
+    1. `language` must be in `engine.supported_languages` (hard gate).
+    2. For engines whose tokenizer can't handle Cyrillic (`supports_cyrillic_text=False`):
        reject if the text body contains Cyrillic, even if `language=English`.
-       This closes the bypass where a user/UI sends `language=English +
-       text="Привет"` and gets garbled output.
+       Closes the bypass where a user/UI sends `language=English + text="Привет"`
+       and gets garbled output.
 
-    Pure validator; no I/O. Mirrors `_validate_upload_size` shape.
+    The actionable suggestion in the 400 message is computed dynamically -
+    no hardcoded engine names.
     """
     supported = engine.supported_languages
     if supported and language not in supported:
+        suggestion = _suggest_engine_for_language(language)
         raise HTTPException(
             status_code=400,
             detail=(
                 f'Language "{language}" is not supported by engine "{engine.engine_name}". '
-                f'Supported: {", ".join(supported)}. '
-                'Switch to qwen3 for Russian: POST /model/switch with '
-                'model_id="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice".'
+                f'Supported: {", ".join(supported)}.' + _switch_hint(suggestion)
             ),
         )
-    if engine.engine_name == "indextts2" and text and _looks_cyrillic(text):
+    if not engine.supports_cyrillic_text and text and _looks_cyrillic(text):
+        suggestion = _suggest_engine_for_language("Russian")
         raise HTTPException(
             status_code=400,
             detail=(
-                'Engine "indextts2" does not support Cyrillic/Russian text '
-                '(upstream tokenizer mangles it into garbage). '
-                'Switch to qwen3 for Russian: POST /model/switch with '
-                'model_id="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice".'
+                f'Engine "{engine.engine_name}" does not support Cyrillic/Russian text '
+                "(its tokenizer mangles non-Latin scripts into garbage)."
+                + _switch_hint(suggestion)
             ),
         )
 
@@ -461,10 +614,13 @@ async def tts_clone(
 
     has_emotion = (emotion_audio is not None) or bool(emotion_text) or bool(emotion_vector)
     if has_emotion and not engine.supports_emotional_cloning:
+        suggestion = _suggest_emotional_engine()
         raise HTTPException(
             status_code=400,
-            detail="Current engine does not support emotional cloning. "
-            "Switch to TTS_ENGINE=indextts2.",
+            detail=(
+                f'Engine "{engine.engine_name}" does not support emotional cloning.'
+                + _switch_hint(suggestion)
+            ),
         )
 
     modes = sum([emotion_audio is not None, bool(emotion_text), bool(emotion_vector)])
@@ -474,8 +630,43 @@ async def tts_clone(
             detail="Use only one emotion mode: emotion_audio, emotion_text, OR emotion_vector",
         )
 
+    # Per-mode capability check: a "text-only" engine like VoxCPM2 must reject
+    # emotion_audio / emotion_vector with a clear message, NOT silently drop them.
+    engine_modes = engine.emotion_modes
+    requested_mode: str | None = None
+    if emotion_audio is not None:
+        requested_mode = "audio"
+    elif emotion_text:
+        requested_mode = "text"
+    elif emotion_vector:
+        requested_mode = "vector"
+    if requested_mode and engine_modes and requested_mode not in engine_modes:
+        suggestion = _suggest_emotional_engine()
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f'Engine "{engine.engine_name}" does not support emotion_{requested_mode}. '
+                f"Supported modes: {', '.join(sorted(engine_modes)) or 'none'}."
+                + _switch_hint(suggestion)
+            ),
+        )
+
     if not 0.0 <= emotion_alpha <= 1.0:
         raise HTTPException(status_code=400, detail="emotion_alpha must be between 0.0 and 1.0")
+
+    # emotion_alpha is meaningful only on engines that expose intensity. If the
+    # engine doesn't (VoxCPM2 has no emo_alpha equivalent), reject non-default
+    # values rather than silently ignoring them.
+    if has_emotion and emotion_alpha != 1.0 and not engine.supports_emotion_strength:
+        suggestion = _suggest_emotional_engine()
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f'Engine "{engine.engine_name}" does not expose emotion intensity '
+                "(emotion_alpha). Omit the parameter or leave it at 1.0."
+                + _switch_hint(suggestion)
+            ),
+        )
 
     vec = _parse_emotion_vector(emotion_vector)
 

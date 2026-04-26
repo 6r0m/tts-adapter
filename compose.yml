@@ -1,7 +1,9 @@
 # TTS Adapter - Local Development
 # Usage:
-#   Qwen3 only: docker compose --profile gpu up --build
-#   Qwen3 + IndexTTS2: docker compose --profile gpu --profile indextts2 up --build
+#   Qwen3 only:                docker compose --profile gpu up --build
+#   Qwen3 + IndexTTS2:         docker compose --profile gpu --profile indextts2 up --build
+#   Qwen3 + VoxCPM2:           docker compose --profile gpu --profile voxcpm2 up --build
+#   All three:                 docker compose --profile gpu --profile indextts2 --profile voxcpm2 up --build
 #   Easiest: `make up` (auto-detects which engines are installed)
 #
 # Note: TTS requires GPU (qwen-tts needs CUDA)
@@ -46,6 +48,7 @@ services:
     # override this further if needed (e.g. cross-host worker).
     environment:
       TTS_INDEXTTS2_URL: ${TTS_INDEXTTS2_DOCKER_URL:-http://adapter-tts-indextts2:9881}
+      TTS_VOXCPM2_URL: ${TTS_VOXCPM2_DOCKER_URL:-http://adapter-tts-voxcpm2:9882}
     ports:
       - "${TTS_PORT:-9880}:9880"
     networks:
@@ -94,6 +97,42 @@ services:
       dockerfile: Dockerfile.indextts2
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9881/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  # VoxCPM2 worker - THIN bind-mount image (same pattern as adapter-tts-indextts2).
+  # The vendor venv (~10 GB) lives on the host (built by `make install-voxcpm2`)
+  # and is bind-mounted at /work/vendor/voxcpm. This avoids duplicating the
+  # torch/CUDA/transformers stack inside the container layer.
+  # Activated only when --profile voxcpm2 is passed.
+  # `make up` auto-adds this profile when vendor/voxcpm/.venv + checkpoints exist.
+  adapter-tts-voxcpm2:
+    <<: *gpu
+    container_name: adapter-tts-voxcpm2
+    profiles: ["voxcpm2"]
+    restart: unless-stopped
+    pull_policy: missing
+    image: ${CI_REGISTRY_IMAGE:-tts}/adapter-tts-voxcpm2:${CI_COMMIT_REF_SLUG:-latest}-${CI_PIPELINE_ID:-local}
+    env_file:
+      - .env
+    volumes:
+      - ${HF_CACHE_PATH:-~/.cache/huggingface}:/home/app/.cache/huggingface
+      - ./models:/work/models
+      # Bind-mount the host vendor venv (the ~10 GB torch+CUDA stack lives here,
+      # NOT in the image layer). The checkpoints under vendor/voxcpm/checkpoints/
+      # also come along for the ride - one mount, one source of truth.
+      - ./vendor/voxcpm:/work/vendor/voxcpm:ro
+    ports:
+      - "${TTS_VOXCPM2_PORT:-9882}:9882"
+    networks:
+      - default
+    build:
+      context: .
+      dockerfile: Dockerfile.voxcpm2
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9882/health"]
       interval: 30s
       timeout: 10s
       start_period: 30s

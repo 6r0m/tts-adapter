@@ -64,10 +64,52 @@ class HealthResponse(BaseModel):
     supports_design: bool = Field(default=False, description="Whether voice design is supported")
     supports_custom_voice: bool = Field(default=False, description="Whether preset speakers are supported")
     supports_emotional_cloning: bool = Field(default=False, description="Whether clone+emotion can be combined")
+    emotion_modes: list[str] = Field(
+        default_factory=list,
+        description='Which emotion input modes the engine accepts: subset of ["audio","text","vector"].',
+    )
+    supports_emotion_strength: bool = Field(
+        default=False,
+        description="Whether emotion_alpha is a meaningful intensity knob (vs ignored).",
+    )
+    supports_cyrillic_text: bool = Field(
+        default=True,
+        description="Whether the engine's tokenizer handles Cyrillic. Defaults True - only IndexTTS2 returns False.",
+    )
     supported_languages: list[str] = Field(
         default_factory=list,
         description="Languages this engine accepts. UI populates language dropdown from this list.",
     )
+
+
+class EngineInfo(BaseModel):
+    """One engine's installation/reachability/capability snapshot.
+
+    Drives the UI engine dropdown (only show installed+reachable engines)
+    and the /model/switch error path (suggest the right engine when the
+    current one can't do what the user asked for).
+    """
+
+    name: str = Field(..., description="Engine identifier (e.g. 'qwen3', 'voxcpm2')")
+    installed: bool = Field(..., description="Files present on disk (vendor venv + checkpoints)")
+    reachable: bool = Field(..., description="Backend is callable now (worker /health responds; in-process == installed)")
+    loaded: bool = Field(..., description="Model is warmed up in memory")
+    active: bool = Field(default=False, description="Whether this is the currently-selected engine")
+    supports_cloning: bool = Field(default=False)
+    supports_design: bool = Field(default=False)
+    supports_custom_voice: bool = Field(default=False)
+    supports_emotional_cloning: bool = Field(default=False)
+    emotion_modes: list[str] = Field(default_factory=list)
+    supports_emotion_strength: bool = Field(default=False)
+    supports_cyrillic_text: bool = Field(default=True)
+    supported_languages: list[str] = Field(default_factory=list)
+
+
+class EnginesResponse(BaseModel):
+    """Response listing all registered engines + their state."""
+
+    active: str = Field(..., description="Currently active engine name")
+    engines: list[EngineInfo] = Field(..., description="All registered engines")
 
 
 class ModelInfo(BaseModel):
@@ -80,6 +122,9 @@ class ModelInfo(BaseModel):
     supports_design: bool = Field(default=False)
     supports_custom_voice: bool = Field(default=False)
     supports_emotional_cloning: bool = Field(default=False)
+    emotion_modes: list[str] = Field(default_factory=list)
+    supports_emotion_strength: bool = Field(default=False)
+    supports_cyrillic_text: bool = Field(default=True)
     supported_languages: list[str] = Field(
         default_factory=list,
         description="Languages this model accepts as input.",
@@ -109,4 +154,7 @@ class SwitchModelResponse(BaseModel):
     supports_design: bool = Field(default=False)
     supports_custom_voice: bool = Field(default=False)
     supports_emotional_cloning: bool = Field(default=False)
+    emotion_modes: list[str] = Field(default_factory=list)
+    supports_emotion_strength: bool = Field(default=False)
+    supports_cyrillic_text: bool = Field(default=True)
     supported_languages: list[str] = Field(default_factory=list)
