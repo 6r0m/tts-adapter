@@ -565,6 +565,14 @@ class TestEmotionalCloneValidation:
 
     def test_vector_wrong_length_rejected(self, live_client):
         self._ensure_capable(live_client)
+        # Skip if the active engine doesn't support vector mode at all
+        # (e.g. voxcpm2 supports only "text"). The per-mode capability gate
+        # rejects with a different message before length validation runs.
+        health = live_client.get("/health").json()
+        if "vector" not in (health.get("emotion_modes") or []):
+            pytest.skip(
+                f"Active engine {health.get('engine')} does not support emotion_vector mode"
+            )
         wav = _minimal_wav()
         response = live_client.post(
             "/tts/clone",

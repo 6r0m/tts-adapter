@@ -399,10 +399,12 @@ INDEXTTS2_READY := $(shell \
     echo yes || echo no)
 
 # Same logic for voxcpm2: BOTH the checkpoints AND the bind-mounted vendor venv
-# must exist. Checkpoints can live under vendor/voxcpm/checkpoints/ (default
-# from the download script) or under models/voxcpm2/.
+# must exist. We check ONLY the canonical vendor-local path (matches the worker's
+# default TTS_VOXCPM2_MODEL_DIR), so `make up` doesn't auto-include a worker that
+# would fail /load with a confusing error. If you keep checkpoints under
+# models/voxcpm2/, set TTS_VOXCPM2_MODEL_DIR explicitly in .env.
 VOXCPM2_READY := $(shell \
-    ( test -d vendor/voxcpm/checkpoints/VoxCPM2 || test -d models/voxcpm2/VoxCPM2 ) && \
+    test -d vendor/voxcpm/checkpoints/VoxCPM2 && \
     test -x vendor/voxcpm/.venv/bin/python && \
     echo yes || echo no)
 

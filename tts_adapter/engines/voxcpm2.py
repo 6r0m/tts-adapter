@@ -196,17 +196,19 @@ class VoxCPM2RemoteEngine:
     ) -> bytes:
         """Forward /tts/clone to the worker as multipart form.
 
-        emotion_audio + emotion_vector + emotion_alpha are ignored at this
-        level - the API layer rejects them with 400 before they reach here
-        (see _validate routes.py). They're declared in the signature only
-        for protocol parity.
+        emotion_audio + emotion_vector are silently dropped (API rejects them
+        with 400 before they reach here; declared in signature for protocol parity).
+        emotion_alpha IS forwarded so the worker's defense-in-depth gate rejects
+        non-default values - a direct CLI call that passes alpha shouldn't
+        silently get an alpha-less generation.
         """
-        del emotion_audio, emotion_vector, emotion_alpha
+        del emotion_audio, emotion_vector
         ref_bytes = _coerce_to_bytes(reference_audio)
 
         data: dict[str, str] = {
             "text": text,
             "language": language,
+            "emotion_alpha": str(emotion_alpha),
         }
         if reference_text:
             data["reference_text"] = reference_text
