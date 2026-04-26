@@ -23,7 +23,20 @@ from functools import lru_cache
 import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..contract import ModelInfo
+from ..contract import GenerationParam, ModelInfo
+
+# VoxCPM2 has its OWN tuning knobs - cfg_value (classifier-free guidance) and
+# inference_timesteps (denoising steps). It does NOT use temperature/top_k/top_p
+# /repetition_penalty/max_new_tokens like qwen3/indextts2. Defaults from upstream
+# voxcpm.core.VoxCPM._generate (cfg_value=2.0, inference_timesteps=10).
+_GENERATION_PARAMS: list[GenerationParam] = [
+    GenerationParam(key="cfg_value", label="CFG Guidance", type="number",
+                    default=2.0, min=1.0, max=4.0, step=0.1,
+                    help="Classifier-free guidance scale. Higher = more faithful to text/style, less natural. Default: 2.0"),
+    GenerationParam(key="inference_timesteps", label="Inference Steps", type="integer",
+                    default=10, min=4, max=30, step=1,
+                    help="Denoising steps. More = better quality, slower. Default: 10 (upstream sweet spot)"),
+]
 
 log = logging.getLogger(__name__)
 
@@ -312,6 +325,10 @@ class VoxCPM2RemoteEngine:
     @property
     def supported_languages(self) -> list[str]:
         return _SUPPORTED_LANGUAGES
+
+    @property
+    def generation_params(self) -> list[GenerationParam]:
+        return _GENERATION_PARAMS
 
     def catalog_models(self) -> list[ModelInfo]:
         return [_MODEL_INFO]

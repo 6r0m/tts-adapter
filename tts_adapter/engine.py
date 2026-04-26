@@ -2,7 +2,7 @@
 
 from typing import Any, Protocol, runtime_checkable
 
-from .contract import ModelInfo
+from .contract import GenerationParam, ModelInfo
 
 
 @runtime_checkable
@@ -166,6 +166,18 @@ class TTSEngine(Protocol):
     @property
     def is_loaded(self) -> bool:
         """Whether the model is currently warmed up in memory."""
+        ...
+
+    @property
+    def generation_params(self) -> list[GenerationParam]:
+        """Tunable generation knobs THIS engine actually accepts.
+
+        Empty list = the engine has no exposed knobs. UI hides the
+        Advanced Settings panel entirely for engines that return [].
+        Avoids the trap where the panel shows qwen-style temperature/top_k
+        for an engine like VoxCPM2 that uses cfg_value/inference_timesteps
+        instead - controls would do nothing.
+        """
         ...
 
     @property

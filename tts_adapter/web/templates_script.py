@@ -166,6 +166,7 @@ async function checkStatus(options = {}) {
         updateStatusText();
         updateTabAvailability(data);
         populateLanguageDropdowns(data.supported_languages || [], previousEngine);
+        populateGenerationParams(data.generation_params || []);
 
         const shouldRefreshModels = options.refreshModels
             || availableModels.length === 0
@@ -696,21 +697,76 @@ async function generateClone() {
 }
 
 function getAdvancedSettings(prefix) {
-    const fields = {
-        temperature: 'float',
-        top_k: 'int',
-        top_p: 'float',
-        repetition_penalty: 'float',
-        max_new_tokens: 'int',
-    };
+    // Iterate ONLY the params the active engine declares - no qwen-style
+    // temperature/top_k for VoxCPM2, no cfg_value for qwen3. The fields are
+    // present in the DOM iff serverInfo.generation_params includes them.
+    const params = serverInfo?.generation_params || [];
     const out = {};
-    for (const [key, type] of Object.entries(fields)) {
-        const val = document.getElementById(prefix + '-' + key).value;
+    for (const p of params) {
+        const el = document.getElementById(prefix + '-' + p.key);
+        if (!el) continue;
+        const val = el.value;
         if (val === '') continue;
-        const num = type === 'int' ? parseInt(val, 10) : parseFloat(val);
-        if (Number.isFinite(num)) out[key] = num;
+        const num = p.type === 'integer' ? parseInt(val, 10) : parseFloat(val);
+        if (Number.isFinite(num)) out[p.key] = num;
     }
     return out;
+}
+
+// Build the Advanced Settings panel from /health.generation_params for each
+// of the three tabs (simple / design / clone). Re-runs on every engine switch
+// so the panel always reflects the active engine's actual knobs - not stale
+// qwen-style fields when voxcpm2 is selected.
+const ADVANCED_PREFIXES = ['simple', 'design', 'clone'];
+
+function populateGenerationParams(params) {
+    params = Array.isArray(params) ? params : [];
+    ADVANCED_PREFIXES.forEach(prefix => {
+        const grid = document.getElementById(prefix + '-advanced-grid');
+        const wrap = document.getElementById(prefix + '-advanced-settings');
+        if (!grid || !wrap) return;
+
+        // Hide the whole panel if engine declares no knobs.
+        wrap.hidden = params.length === 0;
+        if (params.length === 0) {
+            grid.replaceChildren();
+            return;
+        }
+
+        // Preserve existing user values across re-renders when the same key
+        // is still present on the new engine.
+        const previousValues = {};
+        grid.querySelectorAll('input[data-param-key]').forEach(input => {
+            previousValues[input.dataset.paramKey] = input.value;
+        });
+
+        grid.replaceChildren();
+        params.forEach(p => {
+            const cell = document.createElement('div');
+
+            const label = document.createElement('label');
+            const id = prefix + '-' + p.key;
+            label.htmlFor = id;
+            label.textContent = p.label || p.key;
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.id = id;
+            input.dataset.paramKey = p.key;
+            input.min = String(p.min);
+            input.max = String(p.max);
+            input.step = String(p.step);
+            // Use the user's previous value if still relevant, otherwise the engine default.
+            input.value = previousValues[p.key] !== undefined
+                ? previousValues[p.key]
+                : String(p.default);
+            if (p.help) input.title = p.help;
+
+            cell.appendChild(label);
+            cell.appendChild(input);
+            grid.appendChild(cell);
+        });
+    });
 }
 
 function openAdvancedHelp() {

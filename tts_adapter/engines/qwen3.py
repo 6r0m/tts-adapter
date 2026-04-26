@@ -10,8 +10,29 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..audio_utils import bytes_to_tempfile, trim_silence
 from ..config import get_settings
-from ..contract import ModelInfo
+from ..contract import GenerationParam, ModelInfo
 from ..gpu_utils import unload_gpu_model
+
+# Per-engine tuning knobs surfaced to /health.generation_params and rendered
+# by the Web UI's Advanced Settings panel. Defaults match qwen-tts library
+# defaults so the UI shows what the model will actually use if untouched.
+_GENERATION_PARAMS: list[GenerationParam] = [
+    GenerationParam(key="temperature", label="Temperature", type="number",
+                    default=0.9, min=0.01, max=2.0, step=0.05,
+                    help="Sampling randomness. Lower = more deterministic. Default: 0.9"),
+    GenerationParam(key="top_k", label="Top-K", type="integer",
+                    default=50, min=1, max=200, step=1,
+                    help="Restrict sampling to top K tokens. Default: 50"),
+    GenerationParam(key="top_p", label="Top-P", type="number",
+                    default=1.0, min=0.1, max=1.0, step=0.05,
+                    help="Nucleus sampling - probability mass cutoff. Default: 1.0"),
+    GenerationParam(key="repetition_penalty", label="Repetition Penalty", type="number",
+                    default=1.05, min=1.0, max=2.0, step=0.05,
+                    help="Penalize repeated tokens. Default: 1.05"),
+    GenerationParam(key="max_new_tokens", label="Max Tokens", type="integer",
+                    default=2048, min=256, max=4096, step=256,
+                    help="Cap on generated codec tokens. Default: 2048"),
+]
 
 # Qwen3-specific defaults (owned by this engine)
 _DEFAULT_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
@@ -456,6 +477,11 @@ class Qwen3Engine:
     def supported_languages(self) -> list[str]:
         """10 official Qwen3-TTS languages plus 'Auto' for auto-detection."""
         return _SUPPORTED_LANGUAGES
+
+    @property
+    def generation_params(self) -> list[GenerationParam]:
+        """qwen-tts uses HF transformers generation kwargs."""
+        return _GENERATION_PARAMS
 
     def catalog_models(self) -> list[ModelInfo]:
         """Static list of all Qwen3 variants we know about.

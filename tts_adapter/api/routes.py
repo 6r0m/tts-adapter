@@ -128,6 +128,7 @@ def health() -> HealthResponse:
         supports_emotion_strength=engine.supports_emotion_strength,
         supports_cyrillic_text=engine.supports_cyrillic_text,
         supported_languages=engine.supported_languages,
+        generation_params=engine.generation_params,
     )
 
 
@@ -251,33 +252,44 @@ def _switch_response(engine: TTSEngine, message: str) -> SwitchModelResponse:
     )
 
 
-def _suggest_emotional_engine() -> str | None:
+def _suggest_emotional_engine(
+    *, exclude: str | None = None, requires_mode: str | None = None,
+    requires_strength: bool = False,
+) -> str | None:
     """Find the first installed engine that supports emotional cloning.
 
-    Used to make the "current engine doesn't support X" error message
-    actionable - dynamic instead of hardcoded "switch to indextts2".
-    Returns the engine name (e.g. "voxcpm2") or None if no installed
-    engine supports it.
+    Excludes `exclude` (typically the current engine - no point suggesting
+    "switch to yourself"). If `requires_mode` is set, only return an engine
+    whose `emotion_modes` includes that mode. If `requires_strength`, only
+    return an engine that exposes emotion intensity.
     """
     for name, cls in _ENGINES.items():
+        if exclude and name == exclude:
+            continue
         try:
             if not cls.is_installed():
                 continue
             instance = cls()
-            if instance.supports_emotional_cloning:
-                return name
+            if not instance.supports_emotional_cloning:
+                continue
+            if requires_mode and requires_mode not in instance.emotion_modes:
+                continue
+            if requires_strength and not instance.supports_emotion_strength:
+                continue
+            return name
         except Exception:
             continue
     return None
 
 
-def _suggest_engine_for_language(language: str) -> str | None:
+def _suggest_engine_for_language(language: str, *, exclude: str | None = None) -> str | None:
     """Find the first installed engine whose supported_languages includes `language`.
 
-    Lets the language-rejection 400 say "switch to qwen3" or "switch to voxcpm2"
-    based on what's actually installed, instead of always recommending qwen3.
+    Excludes `exclude` (typically the current engine).
     """
     for name, cls in _ENGINES.items():
+        if exclude and name == exclude:
+            continue
         try:
             if not cls.is_installed():
                 continue
@@ -476,8 +488,16 @@ def _collect_gen_kwargs(
     top_p: float | None,
     repetition_penalty: float | None,
     max_new_tokens: int | None,
+    cfg_value: float | None = None,
+    inference_timesteps: int | None = None,
 ) -> dict:
-    """Collect non-None generation kwargs from Form params."""
+    """Collect non-None generation kwargs from Form params.
+
+    Includes the union of all engines' tuning knobs - each engine's
+    synthesize_*() filters to what it actually accepts. Engines that don't
+    use a knob silently ignore it; the UI hides irrelevant controls based
+    on engine.generation_params, so users don't see uneffective fields.
+    """
     return {
         k: v
         for k, v in {
@@ -486,6 +506,8 @@ def _collect_gen_kwargs(
             "top_p": top_p,
             "repetition_penalty": repetition_penalty,
             "max_new_tokens": max_new_tokens,
+            "cfg_value": cfg_value,
+            "inference_timesteps": inference_timesteps,
         }.items()
         if v is not None
     }
@@ -568,7 +590,7 @@ def _validate_language(engine: TTSEngine, language: str, *, text: str | None = N
     """
     supported = engine.supported_languages
     if supported and language not in supported:
-        suggestion = _suggest_engine_for_language(language)
+        suggestion = _suggest_engine_for_language(language, exclude=engine.engine_name)
         raise HTTPException(
             status_code=400,
             detail=(
@@ -577,7 +599,7 @@ def _validate_language(engine: TTSEngine, language: str, *, text: str | None = N
             ),
         )
     if not engine.supports_cyrillic_text and text and _looks_cyrillic(text):
-        suggestion = _suggest_engine_for_language("Russian")
+        suggestion = _suggest_engine_for_language("Russian", exclude=engine.engine_name)
         raise HTTPException(
             status_code=400,
             detail=(
@@ -601,8 +623,10 @@ async def tts_clone(
     temperature: float | None = Form(default=None, ge=0.01, le=2.0),
     top_k: int | None = Form(default=None, ge=1, le=200),
     top_p: float | None = Form(default=None, ge=0.1, le=1.0),
-    repetition_penalty: float | None = Form(default=None, ge=1.0, le=2.0),
+    repetition_penalty: float | None = Form(default=None, ge=1.0, le=20.0),
     max_new_tokens: int | None = Form(default=None, ge=256, le=4096),
+    cfg_value: float | None = Form(default=None, ge=1.0, le=4.0),
+    inference_timesteps: int | None = Form(default=None, ge=4, le=30),
 ) -> Response:
     """Generate speech by cloning voice from reference audio.
 
@@ -625,7 +649,7 @@ async def tts_clone(
 
     has_emotion = (emotion_audio is not None) or bool(emotion_text) or bool(emotion_vector)
     if has_emotion and not engine.supports_emotional_cloning:
-        suggestion = _suggest_emotional_engine()
+        suggestion = _suggest_emotional_engine(exclude=engine.engine_name)
         raise HTTPException(
             status_code=400,
             detail=(
@@ -652,7 +676,9 @@ async def tts_clone(
     elif emotion_vector:
         requested_mode = "vector"
     if requested_mode and engine_modes and requested_mode not in engine_modes:
-        suggestion = _suggest_emotional_engine()
+        suggestion = _suggest_emotional_engine(
+            exclude=engine.engine_name, requires_mode=requested_mode,
+        )
         raise HTTPException(
             status_code=400,
             detail=(
@@ -669,7 +695,9 @@ async def tts_clone(
     # engine doesn't (VoxCPM2 has no emo_alpha equivalent), reject non-default
     # values rather than silently ignoring them.
     if has_emotion and emotion_alpha != 1.0 and not engine.supports_emotion_strength:
-        suggestion = _suggest_emotional_engine()
+        suggestion = _suggest_emotional_engine(
+            exclude=engine.engine_name, requires_strength=True,
+        )
         raise HTTPException(
             status_code=400,
             detail=(
@@ -684,7 +712,10 @@ async def tts_clone(
     audio_bytes = await reference_audio.read()
     emotion_audio_bytes = await emotion_audio.read() if emotion_audio is not None else None
 
-    gen_kwargs = _collect_gen_kwargs(temperature, top_k, top_p, repetition_penalty, max_new_tokens)
+    gen_kwargs = _collect_gen_kwargs(
+        temperature, top_k, top_p, repetition_penalty, max_new_tokens,
+        cfg_value=cfg_value, inference_timesteps=inference_timesteps,
+    )
     wav_bytes = engine.synthesize_clone(
         text=text,
         reference_audio=audio_bytes,

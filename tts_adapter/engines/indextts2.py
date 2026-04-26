@@ -15,7 +15,28 @@ from functools import lru_cache
 import httpx
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ..contract import ModelInfo
+from ..contract import GenerationParam, ModelInfo
+
+# IndexTTS2's worker (scripts/indextts2/serve.py) accepts the same HF-transformers-style
+# kwargs as qwen3 and forwards them to upstream.infer(...). Keep the list aligned with
+# qwen3's so the UI feels consistent for users who switch between them.
+_GENERATION_PARAMS: list[GenerationParam] = [
+    GenerationParam(key="temperature", label="Temperature", type="number",
+                    default=0.9, min=0.01, max=2.0, step=0.05,
+                    help="Sampling randomness. Default: 0.9"),
+    GenerationParam(key="top_k", label="Top-K", type="integer",
+                    default=30, min=1, max=200, step=1,
+                    help="Restrict sampling to top K tokens. Default: 30 (IndexTTS2 prefers tighter sampling)"),
+    GenerationParam(key="top_p", label="Top-P", type="number",
+                    default=0.8, min=0.1, max=1.0, step=0.05,
+                    help="Nucleus sampling cutoff. Default: 0.8 (tighter than qwen3)"),
+    GenerationParam(key="repetition_penalty", label="Repetition Penalty", type="number",
+                    default=10.0, min=1.0, max=20.0, step=0.5,
+                    help="Penalize repeated tokens. Default: 10.0 (much stronger than qwen3 - upstream IndexTTS2 default)"),
+    GenerationParam(key="max_new_tokens", label="Max Tokens", type="integer",
+                    default=1500, min=256, max=4096, step=256,
+                    help="Cap on generated codec tokens. Default: 1500 (upstream IndexTTS2 default)"),
+]
 
 log = logging.getLogger(__name__)
 
@@ -296,6 +317,10 @@ class IndexTTS2RemoteEngine:
             return resp.status_code == 200 and bool(resp.json().get("model_loaded"))
         except Exception:
             return False
+
+    @property
+    def generation_params(self) -> list[GenerationParam]:
+        return _GENERATION_PARAMS
 
     @property
     def supported_languages(self) -> list[str]:

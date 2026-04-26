@@ -2,34 +2,21 @@
 
 
 def _advanced_settings(prefix: str) -> str:
-    """Generate collapsible advanced settings section for a tab."""
+    """Generate the Advanced Settings shell for a tab.
+
+    The grid is populated dynamically by populateGenerationParams() in
+    templates_script.py from /health.generation_params - the active engine
+    declares its own knobs (qwen3 = temperature/top_k/etc; voxcpm2 =
+    cfg_value/inference_timesteps), so the user only sees controls that
+    actually do something. The shell is hidden when the engine declares
+    no knobs.
+    """
     return f"""
-            <details class="advanced-settings">
+            <details class="advanced-settings" id="{prefix}-advanced-settings" hidden>
                 <summary><span class="advanced-arrow"></span> <span data-i18n="advanced.title">Advanced Settings</span>
                     <button type="button" class="param-help" onclick="event.preventDefault(); event.stopPropagation(); openAdvancedHelp()" data-i18n-title="advanced.guide" title="Parameter guide" aria-label="Parameter guide">?</button>
                 </summary>
-                <div class="advanced-grid">
-                    <div>
-                        <label for="{prefix}-temperature" data-i18n="param.temperature">Temperature</label>
-                        <input type="number" id="{prefix}-temperature" value="0.9" min="0.01" max="2.0" step="0.05" data-i18n-title="param.temp_tip" title="Controls randomness. Default: 0.9">
-                    </div>
-                    <div>
-                        <label for="{prefix}-top_k" data-i18n="param.top_k">Top-K</label>
-                        <input type="number" id="{prefix}-top_k" value="50" min="1" max="200" step="1" data-i18n-title="param.topk_tip" title="Top-k sampling. Default: 50">
-                    </div>
-                    <div>
-                        <label for="{prefix}-top_p" data-i18n="param.top_p">Top-P</label>
-                        <input type="number" id="{prefix}-top_p" value="1.0" min="0.1" max="1.0" step="0.05" data-i18n-title="param.topp_tip" title="Nucleus sampling. Default: 1.0">
-                    </div>
-                    <div>
-                        <label for="{prefix}-repetition_penalty" data-i18n="param.rep_penalty">Repetition Penalty</label>
-                        <input type="number" id="{prefix}-repetition_penalty" value="1.05" min="1.0" max="2.0" step="0.05" data-i18n-title="param.rep_tip" title="Repetition penalty. Default: 1.05">
-                    </div>
-                    <div>
-                        <label for="{prefix}-max_new_tokens" data-i18n="param.max_tokens">Max Tokens</label>
-                        <input type="number" id="{prefix}-max_new_tokens" value="2048" min="256" max="4096" step="256" data-i18n-title="param.tokens_tip" title="Max codec tokens. Default: 2048">
-                    </div>
-                </div>
+                <div class="advanced-grid" id="{prefix}-advanced-grid" data-prefix="{prefix}"></div>
             </details>"""
 
 

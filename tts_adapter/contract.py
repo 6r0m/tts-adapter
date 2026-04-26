@@ -53,6 +53,24 @@ class TTSCloneRequest(BaseModel):
     language: str = Field(default="Auto", description="Language code or 'Auto'")
 
 
+class GenerationParam(BaseModel):
+    """One tunable generation knob the active engine actually uses.
+
+    Engines declare their own list - a knob that doesn't apply to a model
+    (e.g. transformers temperature on VoxCPM2 which uses cfg_value instead)
+    is omitted, so the UI doesn't expose controls that get silently ignored.
+    """
+
+    key: str = Field(..., description="Form field name; passed through as a kwarg to synthesize_*")
+    label: str = Field(..., description="Short human label (English; UI translates if needed)")
+    type: str = Field(default="number", description="HTML input type: 'number' or 'integer'")
+    default: float = Field(..., description="Recommended default value for this engine")
+    min: float = Field(..., description="Minimum acceptable value")
+    max: float = Field(..., description="Maximum acceptable value")
+    step: float = Field(..., description="UI input step")
+    help: str = Field(default="", description="Short tooltip explaining what the knob does")
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
 
@@ -79,6 +97,10 @@ class HealthResponse(BaseModel):
     supported_languages: list[str] = Field(
         default_factory=list,
         description="Languages this engine accepts. UI populates language dropdown from this list.",
+    )
+    generation_params: list[GenerationParam] = Field(
+        default_factory=list,
+        description="Tunable generation knobs the active engine actually uses (drives the Advanced Settings panel).",
     )
 
 
