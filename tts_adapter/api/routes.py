@@ -136,13 +136,24 @@ def _engine_info(name: str, engine_cls: type, *, active_name: str) -> EngineInfo
 
     Constructs a lightweight instance just to query capability properties.
     Capability props don't touch GPU/network. is_installed is a classmethod
-    (cheap filesystem stat). is_reachable can ping the worker (~2 s timeout).
-    is_loaded is the live state of the active engine ONLY - other engines
-    return False even if their workers are up but unselected (the main
-    adapter's idea of "loaded" tracks our chosen engine).
+    (cheap filesystem stat). is_reachable pings the worker with a SHORT
+    timeout (~500 ms) - the UI polls /engines every 3 s, so two unreachable
+    workers must NOT add 4+ s of latency to every poll.
+
+    is_loaded reads the worker's actual /health.model_loaded even when the
+    engine isn't currently active - a worker can be loaded independently
+    of which engine the main adapter has selected.
     """
     is_active = name == active_name
     instance = get_engine() if is_active else engine_cls()
+    # Short timeout for /engines specifically: this endpoint is polled by the UI
+    # so we can't pay the long generation timeout per inactive engine.
+    short_health_timeout = 0.5
+    if hasattr(instance, "_health_timeout"):
+        try:
+            instance._health_timeout = short_health_timeout  # type: ignore[attr-defined]
+        except Exception:
+            pass
     try:
         installed = engine_cls.is_installed()
     except Exception:
@@ -152,7 +163,7 @@ def _engine_info(name: str, engine_cls: type, *, active_name: str) -> EngineInfo
     except Exception:
         reachable = False
     try:
-        loaded = bool(instance.is_loaded) if is_active else False
+        loaded = bool(instance.is_loaded)
     except Exception:
         loaded = False
     return EngineInfo(

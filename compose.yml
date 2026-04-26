@@ -25,11 +25,15 @@ x-gpu: &gpu
             count: 1
             capabilities: [gpu]
 
-# Shared volume + env mounts (HF cache + repo-local models + .env)
+# Shared volume + env mounts (HF cache + repo-local models + vendor + .env)
+# Vendor is read-only mounted into the main adapter so is_installed()
+# (which stats vendor/<engine>/.venv + checkpoint dir) returns the right
+# answer for remote-worker engines from inside the main container.
 x-shared-mounts: &shared-mounts
   volumes:
     - ${HF_CACHE_PATH:-~/.cache/huggingface}:/home/app/.cache/huggingface
     - ./models:/work/models
+    - ./vendor:/work/vendor:ro
   env_file:
     - .env
 

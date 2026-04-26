@@ -77,8 +77,8 @@ curl -X POST http://localhost:9880/model/switch \
 ### Add VoxCPM2 (optional - **Russian emotional voice cloning**)
 
 VoxCPM2 (OpenBMB, Apr 2026, Apache-2.0) is the recommended engine for Russian
-voice cloning + emotion control in one call. Same isolated-worker pattern as
-IndexTTS2. See [docs/engines/voxcpm2/README.md](docs/engines/voxcpm2/README.md).
+voice cloning + emotion control in one call. 23 languages including Russian.
+Same isolated-worker pattern as IndexTTS2. See [docs/engines/voxcpm2/README.md](docs/engines/voxcpm2/README.md).
 
 ```bash
 make install-voxcpm2   # Clones upstream + isolated venv + downloads checkpoints (~10 GB)
@@ -217,7 +217,7 @@ curl http://localhost:9880/health
 | Engine | Status | How it runs | Languages | Description |
 |--------|--------|-------------|-----------|-------------|
 | [Qwen3-TTS](docs/engines/qwen3/README.md) | Ready | In-process | 10 + Auto (Russian, Chinese, English, Japanese, Korean, German, French, Portuguese, Spanish, Italian) | 1.7B/0.6B preset speakers, voice cloning OR `instruct` style (never both) |
-| [VoxCPM2](docs/engines/voxcpm2/README.md) | Ready (local/Docker path; requires installed worker) | Isolated worker on `:9882` | 23 + Auto (incl. **Russian**, English, Chinese, Japanese, Korean, ...) | **Russian-capable** emotional voice cloning (text-tag style); Apache-2.0 |
+| [VoxCPM2](docs/engines/voxcpm2/README.md) | Ready (local/Docker path; requires installed worker) | Isolated worker on `:9882` | 23 incl. **Russian** + Auto (English, Chinese, Japanese, Korean, German, French, ...) | **Russian-capable** emotional voice cloning (text-tag style); Apache-2.0 |
 | [IndexTTS2](docs/engines/indextts2/README.md) | Ready (local/Docker path; requires installed worker) | Isolated worker on `:9881` | Chinese, English, Japanese **only** (no Russian) | Rich emotional voice cloning (audio / text / 8-vector + alpha) |
 
 **Language gate:** the API rejects unsupported language requests with `400` + actionable hint. The Web UI's language dropdown is populated from the active engine's `supported_languages` (via `/health`), so users only see what will actually work. Russian preference is honored when the active engine supports it; otherwise the UI auto-falls-back and shows an inline hint suggesting the engine switch.

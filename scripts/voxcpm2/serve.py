@@ -76,7 +76,18 @@ def _env_str(name: str, default: str) -> str:
 
 
 _DEFAULT_MODEL_DIR = str(_REPO_ROOT / "vendor" / "voxcpm" / "checkpoints" / "VoxCPM2")
-MODEL_DIR = _env_str("TTS_VOXCPM2_MODEL_DIR", _DEFAULT_MODEL_DIR)
+
+
+def _resolve_model_dir(raw: str) -> str:
+    """Resolve TTS_VOXCPM2_MODEL_DIR. Relative paths anchor at _REPO_ROOT, NOT
+    process cwd - because `make run-voxcpm2` runs the worker after `cd vendor/voxcpm`,
+    so a relative path from .env would otherwise mean `vendor/voxcpm/<that>`.
+    """
+    p = Path(raw)
+    return str(p.resolve()) if p.is_absolute() else str((_REPO_ROOT / p).resolve())
+
+
+MODEL_DIR = _resolve_model_dir(_env_str("TTS_VOXCPM2_MODEL_DIR", _DEFAULT_MODEL_DIR))
 OPTIMIZE = _env_bool("TTS_VOXCPM2_OPTIMIZE", True)
 LOAD_DENOISER = _env_bool("TTS_VOXCPM2_LOAD_DENOISER", False)
 PORT = int(os.environ.get("TTS_VOXCPM2_PORT", "9882"))
@@ -180,6 +191,7 @@ async def tts_clone(
     emotion_audio: UploadFile | None = File(default=None),
     emotion_text: str = Form(default=""),
     emotion_vector: str = Form(default=""),
+    emotion_alpha: float = Form(default=1.0),
     cfg_value: float | None = Form(default=None),
     inference_timesteps: int | None = Form(default=None),
 ):
@@ -200,6 +212,13 @@ async def tts_clone(
         raise HTTPException(
             400,
             'VoxCPM2 does not support emotion_vector. Use emotion_text or switch to indextts2.',
+        )
+    # VoxCPM2 has no emo_alpha equivalent. Reject non-default values explicitly
+    # rather than silently ignoring them (mirrors the main adapter's gate).
+    if emotion_alpha != 1.0:
+        raise HTTPException(
+            400,
+            'VoxCPM2 does not expose emotion_alpha. Omit it (default 1.0) or switch to indextts2.',
         )
 
     # `language` is informational only here - VoxCPM2's tokenizer is multilingual

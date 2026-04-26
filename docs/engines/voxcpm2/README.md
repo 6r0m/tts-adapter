@@ -1,8 +1,14 @@
 # VoxCPM2 Engine
 
-> **Russian + 23 other languages, voice clone + text-tag emotion control, Apache-2.0.**
+> **23 languages including Russian + voice clone + text-tag emotion control, Apache-2.0.**
 > This is the recommended engine for **Russian emotional cloning** - the gap that
 > Qwen3 (no clone+emotion in one call) and IndexTTS2 (no Russian) cannot fill.
+>
+> The exact list is in [`tts_adapter/engines/voxcpm2.py`](../../../tts_adapter/engines/voxcpm2.py)
+> as `_SUPPORTED_LANGUAGES` (sourced from upstream `openbmb/VoxCPM2` HF model
+> card `cardData.language`). `Auto` is exposed as a permissive language token -
+> VoxCPM2's tokenizer is multilingual and doesn't require a language hint at
+> inference, so `language=Auto` simply skips the API's per-engine language gate.
 
 ## Overview
 
