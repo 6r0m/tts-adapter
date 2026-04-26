@@ -203,7 +203,9 @@ class TestModelSwitchValidation:
         assert response.status_code == 400
         data = response.json()
         assert "detail" in data
-        assert "Invalid model ID" in data["detail"]
+        # Phase C wording: was "Invalid model ID", now "Unknown model ID"
+        # because /model/switch validates against the catalog union of all engines.
+        assert "Unknown model ID" in data["detail"] or "Invalid model ID" in data["detail"]
 
     def test_switch_same_model_is_noop(self, client):
         """Switching to already-loaded model is a no-op."""

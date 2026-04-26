@@ -61,19 +61,30 @@ services:
       start_period: 120s
       retries: 3
 
-  # IndexTTS2 worker (separate venv, isolated deps).
+  # IndexTTS2 worker - THIN bind-mount image.
+  # The vendor venv (~10 GB) lives on the host (built by `make install-indextts2`)
+  # and is bind-mounted at /work/vendor/index-tts. This avoids duplicating the
+  # torch/CUDA/transformers stack inside the container layer.
   # Activated only when --profile indextts2 is passed.
   # `make up` auto-adds this profile when models/indextts2/IndexTTS-2/ exists.
   adapter-tts-indextts2:
-    <<: [*gpu, *shared-mounts]
+    <<: *gpu
     container_name: adapter-tts-indextts2
     profiles: ["indextts2"]
     restart: unless-stopped
     pull_policy: missing
     image: ${CI_REGISTRY_IMAGE:-tts}/adapter-tts-indextts2:${CI_COMMIT_REF_SLUG:-latest}-${CI_PIPELINE_ID:-local}
-    # Worker reaches main adapter (and vice versa) via container hostnames on
-    # the default project network. Main adapter overrides TTS_INDEXTTS2_URL
-    # via .env to use http://adapter-tts-indextts2:9881 inside the network.
+    env_file:
+      - .env
+    volumes:
+      # Shared HF cache - the prewarmed w2v-bert / MaskGCT / etc. live here.
+      - ${HF_CACHE_PATH:-~/.cache/huggingface}:/home/app/.cache/huggingface
+      # IndexTTS-2 checkpoints (~6 GB).
+      - ./models:/work/models
+      # Bind-mount the host vendor venv (the ~10 GB torch+CUDA stack lives here,
+      # NOT in the image layer). Read-only is safe because PYTHONDONTWRITEBYTECODE
+      # + PYTHONPYCACHEPREFIX in the image redirect bytecode writes to /tmp.
+      - ./vendor/index-tts:/work/vendor/index-tts:ro
     ports:
       - "${TTS_INDEXTTS2_PORT:-9881}:9881"
     networks:
@@ -82,7 +93,7 @@ services:
       context: .
       dockerfile: Dockerfile.indextts2
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9881/health', timeout=10)"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9881/health"]
       interval: 30s
       timeout: 10s
       start_period: 30s

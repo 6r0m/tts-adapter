@@ -110,10 +110,35 @@ install-indextts2:
 	@echo "==> [4/5] IndexTTS-2 checkpoints (~6 GB, idempotent resume)..."
 	uv run python scripts/indextts2/download_model.py
 	@echo ""
-	@echo "==> [5/5] prewarm facebook/w2v-bert-2.0 into HF cache (~2 GB)..."
+	@echo "==> [5/6] prewarm facebook/w2v-bert-2.0 into HF cache (~2 GB)..."
 	@echo "    (fetched by IndexTTS2 on first /load - prewarming makes HF_HUB_OFFLINE=1 honest)"
 	cd vendor/index-tts && env -u VIRTUAL_ENV uv run python -c \
-	    "from transformers import AutoModel; AutoModel.from_pretrained('facebook/w2v-bert-2.0')"
+	    "from transformers import AutoModel, SeamlessM4TFeatureExtractor; \
+	     AutoModel.from_pretrained('facebook/w2v-bert-2.0'); \
+	     SeamlessM4TFeatureExtractor.from_pretrained('facebook/w2v-bert-2.0')"
+	@# Upstream's infer_v2.py forces HF_HUB_CACHE='./checkpoints/hf_cache' at
+	@# import time. Mirror w2v-bert into THAT dir so /load finds it. Hardlinks
+	@# share disk with ~/.cache/huggingface so this costs ~0 bytes.
+	@echo "    -> hardlink-mirror w2v-bert into vendor/index-tts/checkpoints/hf_cache/"
+	@mkdir -p vendor/index-tts/checkpoints/hf_cache
+	@if [ -d ~/.cache/huggingface/hub/models--facebook--w2v-bert-2.0 ] && \
+	    [ ! -d vendor/index-tts/checkpoints/hf_cache/models--facebook--w2v-bert-2.0 ]; then \
+	    cp -al ~/.cache/huggingface/hub/models--facebook--w2v-bert-2.0 \
+	           vendor/index-tts/checkpoints/hf_cache/; \
+	fi
+	@echo ""
+	@echo "==> [6/6] patch editable .pth to relative path (cross-host portable)..."
+	@# uv writes the host's absolute path into _editable_impl_indextts.pth.
+	@# That breaks bind-mounting the venv into Docker (container sees a different
+	@# absolute path). Replace with a relative path that points at the same
+	@# vendor/index-tts/ dir from any mount target. Works for host AND container.
+	@PTH=vendor/index-tts/.venv/lib/python3.10/site-packages/_editable_impl_indextts.pth; \
+	    if [ -f "$$PTH" ]; then \
+	        echo '../../../..' > "$$PTH"; \
+	        echo "patched: $$PTH -> ../../../..  (resolves to vendor/index-tts from site-packages)"; \
+	    else \
+	        echo "WARNING: $$PTH not found - import may fail in Docker"; \
+	    fi
 	@echo ""
 	@echo "============================================================"
 	@echo "IndexTTS2 install complete. Add to .env:"

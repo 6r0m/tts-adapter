@@ -130,6 +130,15 @@ class Qwen3Engine:
         self._default_speaker = settings.default_speaker
         self._default_language = settings.default_language
 
+        # If MODEL_PATH unset but MODEL_ID looks like a HF repo id, try to
+        # resolve it to a local cached snapshot. Works around the bug in
+        # transformers 4.57.3 (pinned by qwen-tts) of contacting HF Hub
+        # even for cached models, which breaks HF_HUB_OFFLINE=1.
+        if not self._model_path and "/" in self._model_id:
+            resolved = self._resolve_cache_path(self._model_id)
+            if resolved:
+                self._model_path = resolved
+
         self._model = None
         self._lock = threading.Lock()
 
