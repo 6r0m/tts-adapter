@@ -100,6 +100,22 @@ class TTSEngine(Protocol):
         """
         ...
 
+    @property
+    def supported_languages(self) -> list[str]:
+        """Languages this engine actually accepts as input.
+
+        Includes "Auto" if the engine has language auto-detection. The API
+        layer rejects requests whose `language` is not in this list with 400
+        + actionable hint (switch to an engine that supports it). Drives the
+        UI dropdown so the site is the source of truth - users only see
+        languages that will actually work.
+
+        Engine-specific language NAMES (not BCP-47 codes) - match what the
+        engine library expects (e.g. "Russian" not "ru"). Document the
+        canonical list in the engine's docs/engines/<name>/README.md.
+        """
+        ...
+
     def catalog_models(self) -> list[ModelInfo]:
         """Static, ALWAYS-returned list of models this engine knows about.
 

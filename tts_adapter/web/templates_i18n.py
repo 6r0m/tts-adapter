@@ -116,6 +116,8 @@ TRANSLATIONS = {
         "emotion.melancholic": "Меланхолия",
         "emotion.surprised": "Удивление",
         "emotion.calm": "Спокойствие",
+        # Language fallback (when active engine doesn't support preferred language)
+        "lang.unsupported_hint": "{preferred} не поддерживается движком {engine}. Выбран {lang}. Переключите движок, чтобы использовать {preferred}.",
         # Hints
         "hint.instruct": "Управляйте тоном, эмоцией, скоростью. Только для модели CustomVoice.",
         "hint.design": "Опишите голос: пол, возраст, высота, тембр, эмоция, темп. Мы обрезаем тишину.",
@@ -289,6 +291,8 @@ TRANSLATIONS = {
         "emotion.melancholic": "Melancholic",
         "emotion.surprised": "Surprised",
         "emotion.calm": "Calm",
+        # Language fallback (when active engine doesn't support preferred language)
+        "lang.unsupported_hint": "{preferred} is not supported by engine {engine}. Defaulted to {lang}. Switch engine to use {preferred}.",
         # Hints
         "hint.instruct": "Control tone, emotion, speed. Works with CustomVoice model only.",
         "hint.design": "Describe the voice: gender, age, pitch, timbre, emotion, pace. We trim trailing silence.",

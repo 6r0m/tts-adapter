@@ -114,18 +114,8 @@ INDEX_BODY = """
             <div class="row">
                 <div>
                     <label for="language" data-i18n="label.language">Language</label>
-                    <select id="language" data-i18n-title="title.language" title="Language for output speech">
-                        <option value="Russian">Russian</option>
-                        <option value="English">English</option>
-                        <option value="Chinese">Chinese</option>
-                        <option value="Japanese">Japanese</option>
-                        <option value="Korean">Korean</option>
-                        <option value="German">German</option>
-                        <option value="French">French</option>
-                        <option value="Spanish">Spanish</option>
-                        <option value="Italian">Italian</option>
-                        <option value="Portuguese">Portuguese</option>
-                    </select>
+                    <!-- Options populated by populateLanguageDropdowns() from /health.supported_languages -->
+                    <select id="language" data-i18n-title="title.language" title="Language for output speech"></select>
                 </div>
                 <div>
                     <label for="speaker" data-i18n="label.speaker">Speaker</label>
@@ -157,11 +147,8 @@ INDEX_BODY = """
             <textarea id="design-text" data-i18n-placeholder="ph.text" placeholder="Enter text here..." data-i18n-title="title.text" title="Required text to synthesize"></textarea>
 
             <label for="design-language" data-i18n="label.language">Language</label>
-            <select id="design-language" data-i18n-title="title.language" title="Language for output speech">
-                <option value="Russian">Russian</option>
-                <option value="English">English</option>
-                <option value="Chinese">Chinese</option>
-            </select>
+            <!-- Options populated by populateLanguageDropdowns() from /health.supported_languages -->
+            <select id="design-language" data-i18n-title="title.language" title="Language for output speech"></select>
 
             <label for="design-instruct" data-i18n="label.design_instruct">Voice description (required)</label>
             <textarea id="design-instruct" data-i18n-placeholder="ph.design_instruct" placeholder="e.g., Adult female voice, contralto range, warm and confident, expressive" data-i18n-title="title.design_instruct" title="Required voice description (VoiceDesign model)"></textarea>
@@ -177,11 +164,8 @@ INDEX_BODY = """
             <textarea id="clone-text" data-i18n-placeholder="ph.text" placeholder="Enter text here..." data-i18n-title="title.text" title="Required text to synthesize"></textarea>
 
             <label for="clone-language" data-i18n="label.language">Language</label>
-            <select id="clone-language" data-i18n-title="title.language" title="Language for output speech">
-                <option value="Russian">Russian</option>
-                <option value="English">English</option>
-                <option value="Chinese">Chinese</option>
-            </select>
+            <!-- Options populated by populateLanguageDropdowns() from /health.supported_languages -->
+            <select id="clone-language" data-i18n-title="title.language" title="Language for output speech"></select>
 
             <label for="clone-audio" data-i18n="label.ref_audio">Reference audio (WAV, 3-10 sec)</label>
             <input type="file" id="clone-audio" accept=".wav,audio/wav" data-i18n-title="title.ref_audio" title="Required WAV file, 3-10 seconds">

@@ -108,6 +108,7 @@ def health() -> HealthResponse:
         supports_design=engine.supports_design,
         supports_custom_voice=engine.supports_custom_voice,
         supports_emotional_cloning=engine.supports_emotional_cloning,
+        supported_languages=engine.supported_languages,
     )
 
 
@@ -159,6 +160,7 @@ def _switch_response(engine: TTSEngine, message: str) -> SwitchModelResponse:
         supports_design=engine.supports_design,
         supports_custom_voice=engine.supports_custom_voice,
         supports_emotional_cloning=engine.supports_emotional_cloning,
+        supported_languages=engine.supported_languages,
     )
 
 
@@ -259,6 +261,7 @@ def switch_model(req: SwitchModelRequest) -> SwitchModelResponse:
 def tts(req: TTSRequest) -> Response:
     """Generate WAV audio from text."""
     engine = get_engine()
+    _validate_language(engine, req.language, text=req.text)
     wav_bytes = engine.synthesize(
         text=req.text,
         language=req.language,
@@ -296,6 +299,11 @@ def tts_batch(req: TTSBatchRequest) -> Response:
                 status_code=400,
                 detail="all items must share language/speaker/instruct (batch params are global)",
             )
+
+    # Validate language ONCE (batch shares it) and Cyrillic per-item.
+    _validate_language(engine, first.language)
+    for item in req.items:
+        _validate_language(engine, item.language, text=item.text)
 
     texts = [item.text for item in req.items]
     ids = [_sanitize_id(item.id) for item in req.items]
@@ -371,6 +379,51 @@ def _parse_emotion_vector(raw: str) -> list[float] | None:
     return vec
 
 
+# Cyrillic Unicode block (basic Cyrillic + Cyrillic Supplement). Used by the
+# IndexTTS2 text-script guard below: upstream's normalizer routes any non-Latin
+# text to the Chinese path (vendor/index-tts/indextts/utils/front.py:105),
+# producing garbled output. We hard-gate Russian/Cyrillic at the API boundary.
+_CYRILLIC_RE = re.compile(r"[Ѐ-ӿ]")
+
+
+def _looks_cyrillic(text: str) -> bool:
+    return bool(_CYRILLIC_RE.search(text))
+
+
+def _validate_language(engine: TTSEngine, language: str, *, text: str | None = None) -> None:
+    """Reject unsupported language for the active engine. Two-layer check:
+
+    1. `language` must be in `engine.supported_languages` (hard gate)
+    2. For engines that can't handle Cyrillic text (currently only indextts2):
+       reject if the text body contains Cyrillic, even if `language=English`.
+       This closes the bypass where a user/UI sends `language=English +
+       text="Привет"` and gets garbled output.
+
+    Pure validator; no I/O. Mirrors `_validate_upload_size` shape.
+    """
+    supported = engine.supported_languages
+    if supported and language not in supported:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f'Language "{language}" is not supported by engine "{engine.engine_name}". '
+                f'Supported: {", ".join(supported)}. '
+                'Switch to qwen3 for Russian: POST /model/switch with '
+                'model_id="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice".'
+            ),
+        )
+    if engine.engine_name == "indextts2" and text and _looks_cyrillic(text):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                'Engine "indextts2" does not support Cyrillic/Russian text '
+                '(upstream tokenizer mangles it into garbage). '
+                'Switch to qwen3 for Russian: POST /model/switch with '
+                'model_id="Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice".'
+            ),
+        )
+
+
 @app.post("/tts/clone")
 async def tts_clone(
     text: str = Form(..., description="Text to synthesize"),
@@ -402,6 +455,7 @@ async def tts_clone(
             detail="Voice cloning not supported by current model configuration",
         )
 
+    _validate_language(engine, language, text=text)
     _validate_upload_size(reference_audio, "reference_audio")
     _validate_upload_size(emotion_audio, "emotion_audio")
 
@@ -465,6 +519,8 @@ def tts_design(
             status_code=400,
             detail="Voice design not supported by current model configuration",
         )
+
+    _validate_language(engine, language, text=text)
 
     gen_kwargs = _collect_gen_kwargs(temperature, top_k, top_p, repetition_penalty, max_new_tokens)
     wav_bytes = engine.synthesize_design(

@@ -64,6 +64,10 @@ class HealthResponse(BaseModel):
     supports_design: bool = Field(default=False, description="Whether voice design is supported")
     supports_custom_voice: bool = Field(default=False, description="Whether preset speakers are supported")
     supports_emotional_cloning: bool = Field(default=False, description="Whether clone+emotion can be combined")
+    supported_languages: list[str] = Field(
+        default_factory=list,
+        description="Languages this engine accepts. UI populates language dropdown from this list.",
+    )
 
 
 class ModelInfo(BaseModel):
@@ -76,6 +80,10 @@ class ModelInfo(BaseModel):
     supports_design: bool = Field(default=False)
     supports_custom_voice: bool = Field(default=False)
     supports_emotional_cloning: bool = Field(default=False)
+    supported_languages: list[str] = Field(
+        default_factory=list,
+        description="Languages this model accepts as input.",
+    )
 
 
 class ModelsResponse(BaseModel):
@@ -101,3 +109,4 @@ class SwitchModelResponse(BaseModel):
     supports_design: bool = Field(default=False)
     supports_custom_voice: bool = Field(default=False)
     supports_emotional_cloning: bool = Field(default=False)
+    supported_languages: list[str] = Field(default_factory=list)

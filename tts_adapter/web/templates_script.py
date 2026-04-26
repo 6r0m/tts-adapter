@@ -9,6 +9,16 @@ let isSwitchingModel = false;
 const HEALTH_POLL_MS = 3000;
 const EMOTION_VECTOR_KEYS = ['happy', 'angry', 'sad', 'afraid', 'disgusted', 'melancholic', 'surprised', 'calm'];
 
+// IDs of all language <select>s populated from /health.supported_languages.
+// Site is the source of truth: dropdown contents always match what the
+// active engine actually accepts.
+const LANGUAGE_SELECT_IDS = ['language', 'design-language', 'clone-language'];
+
+// Preferred default - matches TTS_DEFAULT_LANGUAGE in .env.example. The
+// dropdown auto-selects this when the active engine supports it; otherwise
+// falls back to the first supported language and shows an inline hint.
+const PREFERRED_LANGUAGE = 'Russian';
+
 function getModelEngine(modelOrId) {
     const id = typeof modelOrId === 'string' ? modelOrId : modelOrId?.id;
     if (!id) return 'unknown';
@@ -63,6 +73,75 @@ function updateStatusText() {
     document.title = `${t('app.title')} — ${modelName} (${capText})`;
 }
 
+// SOT for language options is the server. Each /health poll re-syncs all
+// three language <select>s with engine.supported_languages.
+//
+// Default selection rule:
+//   1. If user previously picked a language and it's still supported -> keep it.
+//   2. Else if PREFERRED_LANGUAGE ('Russian') is supported -> select it.
+//   3. Else select the first supported language and show inline hint banner
+//      explaining Russian isn't available with the current engine.
+function populateLanguageDropdowns(supportedLanguages, previousEngine) {
+    if (!supportedLanguages || !supportedLanguages.length) return;
+
+    const engineChanged = previousEngine && previousEngine !== serverInfo.engine;
+
+    LANGUAGE_SELECT_IDS.forEach(selectId => {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+
+        const previousValue = select.value;
+        select.replaceChildren();
+        supportedLanguages.forEach(lang => {
+            const opt = document.createElement('option');
+            opt.value = lang;
+            opt.textContent = lang;
+            select.appendChild(opt);
+        });
+
+        // Pick the new selection per the rule above.
+        let chosen;
+        if (previousValue && supportedLanguages.includes(previousValue) && !engineChanged) {
+            chosen = previousValue;
+        } else if (supportedLanguages.includes(PREFERRED_LANGUAGE)) {
+            chosen = PREFERRED_LANGUAGE;
+        } else {
+            chosen = supportedLanguages[0];
+        }
+        select.value = chosen;
+    });
+
+    // Inline hint when the preferred language isn't available on the
+    // active engine. Discoverable, not silent.
+    updateLanguageFallbackHint(supportedLanguages);
+}
+
+function updateLanguageFallbackHint(supportedLanguages) {
+    let banner = document.getElementById('language-fallback-hint');
+    const showHint = !supportedLanguages.includes(PREFERRED_LANGUAGE);
+
+    if (!showHint) {
+        if (banner) banner.remove();
+        return;
+    }
+
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'language-fallback-hint';
+        banner.className = 'status warning';
+        const status = document.getElementById('status');
+        if (status && status.parentNode) {
+            status.parentNode.insertBefore(banner, status.nextSibling);
+        }
+    }
+    const hintTemplate = t('lang.unsupported_hint');
+    const fallback = supportedLanguages[0] || '?';
+    banner.textContent = hintTemplate
+        .replace('{engine}', serverInfo.engine || '?')
+        .replace('{lang}', fallback)
+        .replace('{preferred}', PREFERRED_LANGUAGE);
+}
+
 async function checkStatus(options = {}) {
     if (isSwitchingModel && !options.refreshModels) return;
 
@@ -76,6 +155,7 @@ async function checkStatus(options = {}) {
         status.className = 'status ok';
         updateStatusText();
         updateTabAvailability(data);
+        populateLanguageDropdowns(data.supported_languages || [], previousEngine);
 
         const shouldRefreshModels = options.refreshModels
             || availableModels.length === 0

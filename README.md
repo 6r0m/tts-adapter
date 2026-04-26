@@ -184,10 +184,12 @@ curl http://localhost:9880/health
 
 `tts-adapter` is **one public API + Web UI** at `http://localhost:9880`. Qwen3 runs in-process as the default. Some engines (e.g. IndexTTS2) have incompatible dependency stacks and run as **optional isolated workers** behind the same API; clients only ever talk to the main adapter. See [Architecture](docs/architecture.md) for the full mental model.
 
-| Engine | Status | How it runs | Description |
-|--------|--------|-------------|-------------|
-| [Qwen3-TTS](docs/engines/qwen3/README.md) | Ready | In-process | 1.7B/0.6B preset speakers, voice cloning, `instruct` style |
-| [IndexTTS2](docs/engines/indextts2/README.md) | Ready (local/Docker path; requires installed worker) | Isolated worker on `:9881` | Emotional voice cloning (audio / text / 8-vector + alpha) |
+| Engine | Status | How it runs | Languages | Description |
+|--------|--------|-------------|-----------|-------------|
+| [Qwen3-TTS](docs/engines/qwen3/README.md) | Ready | In-process | 10 + Auto (Russian, Chinese, English, Japanese, Korean, German, French, Portuguese, Spanish, Italian) | 1.7B/0.6B preset speakers, voice cloning, `instruct` style |
+| [IndexTTS2](docs/engines/indextts2/README.md) | Ready (local/Docker path; requires installed worker) | Isolated worker on `:9881` | Chinese, English, Japanese **only** (no Russian) | Emotional voice cloning (audio / text / 8-vector + alpha) |
+
+**Language gate:** the API rejects unsupported language requests with `400` + actionable hint. The Web UI's language dropdown is populated from the active engine's `supported_languages` (via `/health`), so users only see what will actually work. Russian preference is honored when the active engine supports it; otherwise the UI auto-falls-back and shows an inline hint suggesting the engine switch.
 
 ### Adding New Engines
 

@@ -18,6 +18,23 @@ _DEFAULT_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 _DEFAULT_DEVICE = "cuda:0"
 _DEFAULT_DTYPE = "bfloat16"
 
+# Qwen3-TTS officially supports these 10 languages plus auto-detect.
+# Source: upstream README at https://github.com/QwenLM/Qwen3-TTS
+# Order matches the canonical list in docs/engines/qwen3/README.md.
+_SUPPORTED_LANGUAGES = [
+    "Auto",
+    "Chinese",
+    "English",
+    "Japanese",
+    "Korean",
+    "German",
+    "French",
+    "Russian",
+    "Portuguese",
+    "Spanish",
+    "Italian",
+]
+
 # Models this engine can switch between at runtime (moved here from routes.py
 # so engines own their own metadata - keeps routes free of engine-name branching).
 _AVAILABLE_MODELS: list[ModelInfo] = [
@@ -28,6 +45,7 @@ _AVAILABLE_MODELS: list[ModelInfo] = [
         supports_custom_voice=True,
         supports_cloning=False,
         supports_design=False,
+        supported_languages=_SUPPORTED_LANGUAGES,
     ),
     ModelInfo(
         id="Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
@@ -36,6 +54,7 @@ _AVAILABLE_MODELS: list[ModelInfo] = [
         supports_custom_voice=False,
         supports_cloning=False,
         supports_design=True,
+        supported_languages=_SUPPORTED_LANGUAGES,
     ),
     ModelInfo(
         id="Qwen/Qwen3-TTS-12Hz-1.7B-Base",
@@ -44,6 +63,7 @@ _AVAILABLE_MODELS: list[ModelInfo] = [
         supports_custom_voice=False,
         supports_cloning=True,
         supports_design=False,
+        supported_languages=_SUPPORTED_LANGUAGES,
     ),
     ModelInfo(
         id="Qwen/Qwen3-TTS-12Hz-0.6B-Base",
@@ -52,6 +72,7 @@ _AVAILABLE_MODELS: list[ModelInfo] = [
         supports_custom_voice=False,
         supports_cloning=True,
         supports_design=False,
+        supported_languages=_SUPPORTED_LANGUAGES,
     ),
 ]
 
@@ -380,6 +401,11 @@ class Qwen3Engine:
         See docs/engines/qwen3/README.md for details.
         """
         return False
+
+    @property
+    def supported_languages(self) -> list[str]:
+        """10 official Qwen3-TTS languages plus 'Auto' for auto-detection."""
+        return _SUPPORTED_LANGUAGES
 
     def catalog_models(self) -> list[ModelInfo]:
         """Static list of all Qwen3 variants we know about.

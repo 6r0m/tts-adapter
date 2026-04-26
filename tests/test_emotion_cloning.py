@@ -284,6 +284,130 @@ class TestQwen3CatalogParity:
         assert len(catalog) == 4
 
 
+class TestSupportedLanguages:
+    """Engine supported_languages property + API gating + Cyrillic guard.
+
+    Mirrors the existing _validate_upload_size + emotion-mode rejection
+    pattern: pure validators, raise HTTPException(400) with actionable
+    detail.
+    """
+
+    def test_qwen3_includes_russian_and_auto(self):
+        from tts_adapter.engines.qwen3 import Qwen3Engine
+
+        langs = Qwen3Engine().supported_languages
+        assert "Russian" in langs
+        assert "Auto" in langs
+        assert "Chinese" in langs
+        assert len(langs) == 11  # Auto + 10 official langs
+
+    def test_indextts2_excludes_russian_and_auto(self):
+        """No 'Auto' for IndexTTS2 - upstream's auto-detect routes Russian
+        through Chinese normalizer. Hard-gate at API instead."""
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+
+        langs = IndexTTS2RemoteEngine().supported_languages
+        assert langs == ["Chinese", "English", "Japanese"]
+        assert "Russian" not in langs
+        assert "Auto" not in langs
+
+    def test_health_exposes_supported_languages(self):
+        """HealthResponse contract carries supported_languages."""
+        from tts_adapter.contract import HealthResponse
+
+        r = HealthResponse(
+            ok=True, engine="qwen3", model="x", device="cpu",
+            supported_languages=["Auto", "Chinese", "English"],
+        )
+        assert r.supported_languages == ["Auto", "Chinese", "English"]
+
+    def test_modelinfo_carries_supported_languages(self):
+        """Each engine's catalog/available models carry the supported list,
+        so /models clients can introspect per-model (not just per-engine)."""
+        from tts_adapter.engines.qwen3 import Qwen3Engine
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+
+        for m in Qwen3Engine().catalog_models():
+            assert "Russian" in m.supported_languages
+        for m in IndexTTS2RemoteEngine().catalog_models():
+            assert "Russian" not in m.supported_languages
+            assert "Auto" not in m.supported_languages
+
+
+class TestValidateLanguage:
+    """Cyrillic + supported-languages gating in routes.py."""
+
+    def test_looks_cyrillic(self):
+        from tts_adapter.api.routes import _looks_cyrillic
+
+        assert _looks_cyrillic("Привет") is True
+        assert _looks_cyrillic("Hello") is False
+        assert _looks_cyrillic("") is False
+        # Mixed: any Cyrillic anywhere counts
+        assert _looks_cyrillic("Hello Привет!") is True
+        # Non-Latin non-Cyrillic (Chinese) is NOT Cyrillic
+        assert _looks_cyrillic("你好") is False
+
+    def test_qwen3_russian_passes(self):
+        from tts_adapter.api.routes import _validate_language
+        from tts_adapter.engines.qwen3 import Qwen3Engine
+
+        # Should not raise
+        _validate_language(Qwen3Engine(), "Russian", text="Привет мир")
+        _validate_language(Qwen3Engine(), "Auto", text="Hello")
+
+    def test_indextts2_russian_rejected_400(self):
+        from fastapi import HTTPException
+        from tts_adapter.api.routes import _validate_language
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+
+        with pytest.raises(HTTPException) as exc:
+            _validate_language(IndexTTS2RemoteEngine(), "Russian", text="hi")
+        assert exc.value.status_code == 400
+        assert "not supported" in exc.value.detail
+        assert "qwen3" in exc.value.detail
+        assert "indextts2" in exc.value.detail
+
+    def test_indextts2_auto_rejected_400(self):
+        """'Auto' is deliberately removed from IndexTTS2 - if it were allowed,
+        Russian text with language=Auto would still produce garbage."""
+        from fastapi import HTTPException
+        from tts_adapter.api.routes import _validate_language
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+
+        with pytest.raises(HTTPException) as exc:
+            _validate_language(IndexTTS2RemoteEngine(), "Auto", text="hello")
+        assert exc.value.status_code == 400
+
+    def test_indextts2_english_with_english_text_passes(self):
+        from tts_adapter.api.routes import _validate_language
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+
+        _validate_language(IndexTTS2RemoteEngine(), "English", text="Hello world")
+        _validate_language(IndexTTS2RemoteEngine(), "Chinese", text="你好世界")
+
+    def test_indextts2_english_with_cyrillic_text_rejected_400(self):
+        """The bypass: API-savvy user sends language=English + text=Russian.
+        Cyrillic regex catches it before upstream mangles."""
+        from fastapi import HTTPException
+        from tts_adapter.api.routes import _validate_language
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+
+        with pytest.raises(HTTPException) as exc:
+            _validate_language(IndexTTS2RemoteEngine(), "English", text="Привет мир")
+        assert exc.value.status_code == 400
+        assert "Cyrillic" in exc.value.detail or "Russian" in exc.value.detail
+        assert "qwen3" in exc.value.detail
+
+    def test_validate_with_no_text_skips_cyrillic_check(self):
+        """Used internally by /tts/batch's first-item language check."""
+        from tts_adapter.api.routes import _validate_language
+        from tts_adapter.engines.indextts2 import IndexTTS2RemoteEngine
+
+        # No text -> only language-name check runs
+        _validate_language(IndexTTS2RemoteEngine(), "English", text=None)
+
+
 class TestRoutesIndex:
     """_catalog_index must include IndexTTS2 even when the worker is down,
     so /model/switch can route to it for the 503 path.

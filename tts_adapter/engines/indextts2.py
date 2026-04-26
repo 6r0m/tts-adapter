@@ -20,6 +20,14 @@ from ..contract import ModelInfo
 log = logging.getLogger(__name__)
 
 _MODEL_ID = "IndexTeam/IndexTTS-2"
+
+# IndexTTS2 upstream supports CN/EN/JP only. NO "Auto" - upstream's text
+# normalizer routes any non-Latin text to the Chinese path (front.py:105),
+# producing garbled output for Russian/Cyrillic. We hard-gate at the API
+# boundary instead. See docs/engines/indextts2/README.md and
+# vendor/index-tts/indextts/utils/front.py:use_chinese().
+_SUPPORTED_LANGUAGES = ["Chinese", "English", "Japanese"]
+
 _MODEL_INFO = ModelInfo(
     id=_MODEL_ID,
     name="IndexTTS-2",
@@ -28,6 +36,7 @@ _MODEL_INFO = ModelInfo(
     supports_emotional_cloning=True,
     supports_design=False,
     supports_custom_voice=False,
+    supported_languages=_SUPPORTED_LANGUAGES,
 )
 
 
@@ -238,6 +247,18 @@ class IndexTTS2RemoteEngine:
     @property
     def supports_emotional_cloning(self) -> bool:
         return True
+
+    @property
+    def supported_languages(self) -> list[str]:
+        """Chinese, English, Japanese - what upstream actually supports.
+
+        Russian/Cyrillic and other languages are silently mangled by upstream's
+        normalizer + tokenizer + CN/EN/JP-trained acoustic model. The API gate
+        rejects unsupported languages with 400 + hint to switch to qwen3.
+        Notably NO 'Auto' - text-script-based auto-detect would still let
+        Russian through because upstream's auto path itself is broken.
+        """
+        return _SUPPORTED_LANGUAGES
 
     def catalog_models(self) -> list[ModelInfo]:
         """Static IndexTTS-2 entry - always returned, regardless of worker health.

@@ -1,14 +1,13 @@
 # IndexTTS2 Engine
 
-> **Status: WIP - isolated worker architecture in progress.**
-> Source of truth: [todo/engine_install_and_switch.md](../../../todo/engine_install_and_switch.md) Phase A.1.
-> The current `tts_adapter/engines/indextts2.py` (in-process) is rejected and will be rewritten as `IndexTTS2RemoteEngine` (HTTP forwarder).
+> **Supported languages: Chinese, English, Japanese ONLY** (no Russian, no `Auto`).
+> Sending Russian text - or `language=English` with Cyrillic in the body - returns **HTTP 400** at the API layer with a hint to switch to Qwen3. Why: upstream's text normalizer routes any non-Latin script to the Chinese tokenizer (see [vendor/index-tts/indextts/utils/front.py:105](../../../vendor/index-tts/indextts/utils/front.py)), the BPE tokenizer has no Cyrillic tokens, and the model itself is trained on CN/EN/JP audio. Even with the normalizer bypassed, output for Russian would still be garbled. For Russian use [Qwen3](../qwen3/README.md) (10 official languages including Russian).
 
 ## Overview
 
 [IndexTTS2](https://github.com/index-tts/index-tts) (Bilibili, Sept 2025) is a zero-shot TTS model with disentangled timbre + emotion conditioning.
 
-**Planned use case:** clone a specific voice and apply emotion control (audio / text / 8-dim vector) once the isolated worker lands. Qwen3-TTS cannot do both at once - see the [qwen3 limitation](../qwen3/README.md). Until Phase A.1 + Phase B ship, this engine is not runnable.
+**Use case:** clone a specific voice and apply emotion control (audio / text / 8-dim vector). Qwen3-TTS cannot do both at once - see the [qwen3 limitation](../qwen3/README.md).
 
 | Feature | Supported |
 |---------|:---------:|
