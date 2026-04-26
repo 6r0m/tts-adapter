@@ -297,19 +297,25 @@ class VoxCPM2RemoteEngine:
 
     @classmethod
     def is_installed(cls) -> bool:
-        """Vendor venv + checkpoint dir present. No worker ping (that's is_reachable)."""
+        """Vendor venv DIR + checkpoint dir present. No worker ping (that's is_reachable).
+
+        We check the .venv DIRECTORY (not its bin/python symlink) because the
+        main adapter container bind-mounts vendor/ from the host, and the host
+        venv's python symlink points at /usr/local/bin/python which only exists
+        in the worker's image, not the main adapter's image. The directory
+        existence is what `is_installed` actually means: the install ran on
+        the host and the files are present.
+        """
         from pathlib import Path
         repo_root = Path(__file__).resolve().parent.parent.parent
-        venv = repo_root / "vendor" / "voxcpm" / ".venv" / "bin" / "python"
-        if not venv.exists():
+        venv_dir = repo_root / "vendor" / "voxcpm" / ".venv"
+        if not venv_dir.is_dir():
             return False
         import os
         model_dir = os.environ.get("TTS_VOXCPM2_MODEL_DIR") or str(
             repo_root / "vendor" / "voxcpm" / "checkpoints" / "VoxCPM2"
         )
-        # Repo-local install dir (preferred over vendor) is the second candidate.
-        repo_models = repo_root / "models" / "voxcpm2" / "VoxCPM2"
-        return Path(model_dir).exists() or repo_models.exists()
+        return Path(model_dir).is_dir()
 
     def is_reachable(self) -> bool:
         return self._is_healthy()

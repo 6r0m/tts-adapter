@@ -254,14 +254,16 @@ def _switch_response(engine: TTSEngine, message: str) -> SwitchModelResponse:
 
 def _suggest_emotional_engine(
     *, exclude: str | None = None, requires_mode: str | None = None,
-    requires_strength: bool = False,
+    requires_strength: bool = False, language: str | None = None,
+    text: str | None = None,
 ) -> str | None:
-    """Find the first installed engine that supports emotional cloning.
+    """Find the first installed engine that supports emotional cloning AND
+    can actually handle the user's language/text - so we don't suggest
+    IndexTTS2 for Russian (it can't), or any non-cyrillic-text engine for
+    a Cyrillic body.
 
-    Excludes `exclude` (typically the current engine - no point suggesting
-    "switch to yourself"). If `requires_mode` is set, only return an engine
-    whose `emotion_modes` includes that mode. If `requires_strength`, only
-    return an engine that exposes emotion intensity.
+    Returns None when nothing fits. Caller renders no hint in that case
+    (better than a wrong hint).
     """
     for name, cls in _ENGINES.items():
         if exclude and name == exclude:
@@ -275,6 +277,10 @@ def _suggest_emotional_engine(
             if requires_mode and requires_mode not in instance.emotion_modes:
                 continue
             if requires_strength and not instance.supports_emotion_strength:
+                continue
+            if language and instance.supported_languages and language not in instance.supported_languages:
+                continue
+            if text and _looks_cyrillic(text) and not instance.supports_cyrillic_text:
                 continue
             return name
         except Exception:
@@ -482,6 +488,20 @@ def tts_batch(req: TTSBatchRequest) -> Response:
     )
 
 
+def _filter_gen_kwargs_for_engine(engine: TTSEngine, raw: dict) -> dict:
+    """Drop kwargs the active engine doesn't actually use.
+
+    The route accepts the union of all engines' tuning knobs (so a single
+    HTTP API surface works for any engine), but each engine declares its
+    own list via `generation_params`. Filtering here means a direct API
+    call that passes `temperature` to VoxCPM2 or `cfg_value` to Qwen3 just
+    drops the irrelevant key instead of letting it leak into the engine's
+    inference call as an unknown kwarg.
+    """
+    allowed = {p.key for p in engine.generation_params}
+    return {k: v for k, v in raw.items() if k in allowed}
+
+
 def _collect_gen_kwargs(
     temperature: float | None,
     top_k: int | None,
@@ -649,7 +669,9 @@ async def tts_clone(
 
     has_emotion = (emotion_audio is not None) or bool(emotion_text) or bool(emotion_vector)
     if has_emotion and not engine.supports_emotional_cloning:
-        suggestion = _suggest_emotional_engine(exclude=engine.engine_name)
+        suggestion = _suggest_emotional_engine(
+            exclude=engine.engine_name, language=language, text=text,
+        )
         raise HTTPException(
             status_code=400,
             detail=(
@@ -678,6 +700,7 @@ async def tts_clone(
     if requested_mode and engine_modes and requested_mode not in engine_modes:
         suggestion = _suggest_emotional_engine(
             exclude=engine.engine_name, requires_mode=requested_mode,
+            language=language, text=text,
         )
         raise HTTPException(
             status_code=400,
@@ -697,6 +720,7 @@ async def tts_clone(
     if has_emotion and emotion_alpha != 1.0 and not engine.supports_emotion_strength:
         suggestion = _suggest_emotional_engine(
             exclude=engine.engine_name, requires_strength=True,
+            language=language, text=text,
         )
         raise HTTPException(
             status_code=400,
@@ -712,9 +736,12 @@ async def tts_clone(
     audio_bytes = await reference_audio.read()
     emotion_audio_bytes = await emotion_audio.read() if emotion_audio is not None else None
 
-    gen_kwargs = _collect_gen_kwargs(
-        temperature, top_k, top_p, repetition_penalty, max_new_tokens,
-        cfg_value=cfg_value, inference_timesteps=inference_timesteps,
+    gen_kwargs = _filter_gen_kwargs_for_engine(
+        engine,
+        _collect_gen_kwargs(
+            temperature, top_k, top_p, repetition_penalty, max_new_tokens,
+            cfg_value=cfg_value, inference_timesteps=inference_timesteps,
+        ),
     )
     wav_bytes = engine.synthesize_clone(
         text=text,
@@ -755,7 +782,10 @@ def tts_design(
 
     _validate_language(engine, language, text=text)
 
-    gen_kwargs = _collect_gen_kwargs(temperature, top_k, top_p, repetition_penalty, max_new_tokens)
+    gen_kwargs = _filter_gen_kwargs_for_engine(
+        engine,
+        _collect_gen_kwargs(temperature, top_k, top_p, repetition_penalty, max_new_tokens),
+    )
     wav_bytes = engine.synthesize_design(
         text=text,
         instruct=instruct,

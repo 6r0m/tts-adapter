@@ -26,14 +26,17 @@ x-gpu: &gpu
             capabilities: [gpu]
 
 # Shared volume + env mounts (HF cache + repo-local models + vendor + .env)
-# Vendor is read-only mounted into the main adapter so is_installed()
-# (which stats vendor/<engine>/.venv + checkpoint dir) returns the right
-# answer for remote-worker engines from inside the main container.
+# Vendor + models are read-only mounted into the main adapter so is_installed()
+# (which stats vendor/<engine>/.venv + checkpoint dir resolved from the package
+# location) returns the right answer for remote-worker engines from inside the
+# main container. Mount targets match the main adapter's WORKDIR (/app), NOT
+# the worker's WORKDIR (/work) - is_installed() resolves paths relative to
+# tts_adapter package location, which is /app/tts_adapter in the main image.
 x-shared-mounts: &shared-mounts
   volumes:
     - ${HF_CACHE_PATH:-~/.cache/huggingface}:/home/app/.cache/huggingface
-    - ./models:/work/models
-    - ./vendor:/work/vendor:ro
+    - ./models:/app/models
+    - ./vendor:/app/vendor:ro
   env_file:
     - .env
 

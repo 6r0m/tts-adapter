@@ -166,7 +166,7 @@ async function checkStatus(options = {}) {
         updateStatusText();
         updateTabAvailability(data);
         populateLanguageDropdowns(data.supported_languages || [], previousEngine);
-        populateGenerationParams(data.generation_params || []);
+        populateGenerationParams(data.generation_params || [], previousEngine);
 
         const shouldRefreshModels = options.refreshModels
             || availableModels.length === 0
@@ -719,8 +719,14 @@ function getAdvancedSettings(prefix) {
 // qwen-style fields when voxcpm2 is selected.
 const ADVANCED_PREFIXES = ['simple', 'design', 'clone'];
 
-function populateGenerationParams(params) {
+function populateGenerationParams(params, previousEngine) {
     params = Array.isArray(params) ? params : [];
+    // Engine change => DON'T preserve user values for shared keys. qwen3 and
+    // indextts2 both have `top_k`/`top_p`/`repetition_penalty` but with very
+    // different valid ranges and defaults (e.g. rep_penalty 1.05 vs 10.0) -
+    // carrying over qwen3's value would silently override indextts2's defaults.
+    const engineChanged = previousEngine && previousEngine !== serverInfo.engine;
+
     ADVANCED_PREFIXES.forEach(prefix => {
         const grid = document.getElementById(prefix + '-advanced-grid');
         const wrap = document.getElementById(prefix + '-advanced-settings');
@@ -733,12 +739,14 @@ function populateGenerationParams(params) {
             return;
         }
 
-        // Preserve existing user values across re-renders when the same key
-        // is still present on the new engine.
+        // Preserve user values within the same engine across periodic /health
+        // re-renders. Drop them entirely on engine switch.
         const previousValues = {};
-        grid.querySelectorAll('input[data-param-key]').forEach(input => {
-            previousValues[input.dataset.paramKey] = input.value;
-        });
+        if (!engineChanged) {
+            grid.querySelectorAll('input[data-param-key]').forEach(input => {
+                previousValues[input.dataset.paramKey] = input.value;
+            });
+        }
 
         grid.replaceChildren();
         params.forEach(p => {

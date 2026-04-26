@@ -292,18 +292,23 @@ class IndexTTS2RemoteEngine:
 
     @classmethod
     def is_installed(cls) -> bool:
-        """Vendor venv + checkpoint dir present. No worker ping (that's is_reachable)."""
+        """Vendor venv DIR + checkpoint dir present. No worker ping (that's is_reachable).
+
+        Checks the .venv DIRECTORY (not its bin/python symlink) - same reason
+        as VoxCPM2RemoteEngine.is_installed: the main adapter container bind-mounts
+        vendor/ but doesn't have the host's symlink target /usr/local/bin/python.
+        Directory presence is the actual signal that `make install-indextts2` ran.
+        """
         from pathlib import Path
         repo_root = Path(__file__).resolve().parent.parent.parent
-        venv = repo_root / "vendor" / "index-tts" / ".venv" / "bin" / "python"
-        if not venv.exists():
+        venv_dir = repo_root / "vendor" / "index-tts" / ".venv"
+        if not venv_dir.is_dir():
             return False
-        # Configured model dir (worker-side env var); fall back to repo-local default.
         import os
         model_dir = os.environ.get("TTS_INDEXTTS2_MODEL_DIR") or str(
             repo_root / "models" / "indextts2" / "IndexTTS-2"
         )
-        return Path(model_dir).exists()
+        return Path(model_dir).is_dir()
 
     def is_reachable(self) -> bool:
         """Worker /health responds within ~2 s."""
