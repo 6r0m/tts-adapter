@@ -1,4 +1,4 @@
-.PHONY: help install install-qwen3 install-indextts2 install-indextts clean-indextts2 download-model download-indextts2 run-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build build-indextts2 build-all rebuild up down logs health shell clean indextts2 all
+.PHONY: help install install-qwen3 install-indextts2 install-indextts clean-indextts2 download-model download-indextts2 run-indextts2 serve server tts tts-clone tts-clone-emotion tts-design test build build-indextts2 build-all verify-indextts2-docker rebuild up down logs health shell clean indextts2 all
 
 # Detect docker compose command (v2 with space vs v1 with hyphen)
 DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
@@ -32,6 +32,7 @@ help:
 	@echo "  make build           - Build images for installed engines (Qwen3 + IndexTTS2 if present)"
 	@echo "  make build-indextts2 - Build only the IndexTTS2 worker image"
 	@echo "  make build-all       - Build both images regardless of install state"
+	@echo "  make verify-indextts2-docker - Quick container import smoke test (catches ABI/.pth issues)"
 	@echo "  make rebuild         - Force rebuild with no cache"
 	@echo "  make up              - Start everything that's installed (auto-adds --profile indextts2)"
 	@echo "  make down            - Stop containers"
@@ -117,14 +118,19 @@ install-indextts2:
 	     AutoModel.from_pretrained('facebook/w2v-bert-2.0'); \
 	     SeamlessM4TFeatureExtractor.from_pretrained('facebook/w2v-bert-2.0')"
 	@# Upstream's infer_v2.py forces HF_HUB_CACHE='./checkpoints/hf_cache' at
-	@# import time. Mirror w2v-bert into THAT dir so /load finds it. Hardlinks
-	@# share disk with ~/.cache/huggingface so this costs ~0 bytes.
-	@echo "    -> hardlink-mirror w2v-bert into vendor/index-tts/checkpoints/hf_cache/"
+	@# import time. Mirror w2v-bert into THAT dir so /load finds it.
+	@# Try hardlink first (zero disk cost when same FS); fall back to copy if
+	@# the HF cache lives on a different filesystem (split home, external disk,
+	@# WSL drvfs, etc.). Hardlink-failed "Invalid cross-device link" -> deep copy.
+	@echo "    -> mirror w2v-bert into vendor/index-tts/checkpoints/hf_cache/"
 	@mkdir -p vendor/index-tts/checkpoints/hf_cache
 	@if [ -d ~/.cache/huggingface/hub/models--facebook--w2v-bert-2.0 ] && \
 	    [ ! -d vendor/index-tts/checkpoints/hf_cache/models--facebook--w2v-bert-2.0 ]; then \
 	    cp -al ~/.cache/huggingface/hub/models--facebook--w2v-bert-2.0 \
-	           vendor/index-tts/checkpoints/hf_cache/; \
+	           vendor/index-tts/checkpoints/hf_cache/ 2>/dev/null \
+	    || ( echo "    (hardlink failed, doing full copy ~2 GB; cross-filesystem)"; \
+	         cp -a ~/.cache/huggingface/hub/models--facebook--w2v-bert-2.0 \
+	               vendor/index-tts/checkpoints/hf_cache/ ); \
 	fi
 	@echo ""
 	@echo "==> [6/6] patch editable .pth to relative path (cross-host portable)..."
@@ -139,6 +145,11 @@ install-indextts2:
 	    else \
 	        echo "WARNING: $$PTH not found - import may fail in Docker"; \
 	    fi
+	@echo ""
+	@echo "==> verify host vendor venv import works after .pth patch..."
+	@cd vendor/index-tts && env -u VIRTUAL_ENV .venv/bin/python -c \
+	    "import indextts; print('  host import OK:', indextts.__file__)" \
+	    || ( echo "FATAL: host import broke after .pth patch - revert manually"; exit 1 )
 	@echo ""
 	@echo "============================================================"
 	@echo "IndexTTS2 install complete. Add to .env:"
@@ -296,9 +307,22 @@ clean:
 
 # Compute the active profiles based on which engines are downloaded.
 # `make up ARGS=--profile=...` can override or augment.
-INDEXTTS2_INSTALLED := $(shell test -d models/indextts2/IndexTTS-2 && echo yes || echo no)
+# IndexTTS2 needs BOTH the checkpoints AND the bind-mounted vendor venv.
+# Models alone aren't enough - the thin Docker worker bind-mounts the venv,
+# so without it the container starts and immediately dies at CMD time.
+INDEXTTS2_READY := $(shell \
+    test -d models/indextts2/IndexTTS-2 && \
+    test -x vendor/index-tts/.venv/bin/python && \
+    echo yes || echo no)
+
+# All-profiles set used for `down` / `logs all` / cleanup - we want to STOP
+# any running indextts2 worker even if the host install state has since
+# changed (e.g., user moved/deleted models or vendor after `make up`).
+COMPOSE_PROFILES_ALL := --profile gpu --profile indextts2
+
+# Up-time profile selection: only activate indextts2 if it's actually ready.
 COMPOSE_PROFILES := --profile gpu
-ifeq ($(INDEXTTS2_INSTALLED),yes)
+ifeq ($(INDEXTTS2_READY),yes)
 COMPOSE_PROFILES += --profile indextts2
 endif
 
@@ -310,6 +334,20 @@ build:
 build-indextts2:
 	$(DOCKER_COMPOSE) --profile indextts2 build adapter-tts-indextts2
 
+# Verify the worker container can import indextts + torch using the
+# bind-mounted vendor venv. Catches .pth-relativization failures, ABI
+# mismatches, and missing CUDA libs BEFORE you wait through `make up`
+# and a real /load. Runs a one-shot container, no port conflict with `make up`.
+verify-indextts2-docker:
+	@if [ "$(INDEXTTS2_READY)" != "yes" ]; then \
+	    echo "IndexTTS2 not ready - run make install-indextts2 first"; \
+	    exit 1; \
+	fi
+	$(DOCKER_COMPOSE) --profile indextts2 run --rm --entrypoint "" \
+	    adapter-tts-indextts2 \
+	    /work/vendor/index-tts/.venv/bin/python -c \
+	    "import indextts, torch; print('indextts:', indextts.__file__); print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available())"
+
 # Build both images.
 build-all:
 	$(DOCKER_COMPOSE) --profile gpu --profile indextts2 build
@@ -318,17 +356,22 @@ rebuild:
 	$(DOCKER_COMPOSE) $(COMPOSE_PROFILES) build --no-cache --pull
 
 up:
-	@if [ "$(INDEXTTS2_INSTALLED)" = "yes" ]; then \
-	    echo "Detected models/indextts2/IndexTTS-2 - including indextts2 worker"; \
+	@if [ "$(INDEXTTS2_READY)" = "yes" ]; then \
+	    echo "IndexTTS2 ready (models + vendor venv) - including worker"; \
 	else \
-	    echo "models/indextts2/IndexTTS-2 not found - skipping indextts2 worker (run 'make install-indextts2' to enable)"; \
+	    echo "IndexTTS2 not ready - skipping worker. Need both:"; \
+	    echo "  models/indextts2/IndexTTS-2/        ($$([ -d models/indextts2/IndexTTS-2 ] && echo OK || echo MISSING))"; \
+	    echo "  vendor/index-tts/.venv/bin/python  ($$([ -x vendor/index-tts/.venv/bin/python ] && echo OK || echo MISSING))"; \
+	    echo "Run: make install-indextts2"; \
 	fi
 	$(DOCKER_COMPOSE) $(COMPOSE_PROFILES) up -d --no-build
 	@sleep 2
 	@echo "Started. Run: make health"
 
+# Always stop both profiles - even if INDEXTTS2_READY flipped to "no" since
+# `make up`, we still want to shut down a running worker container.
 down:
-	$(DOCKER_COMPOSE) $(COMPOSE_PROFILES) down
+	$(DOCKER_COMPOSE) $(COMPOSE_PROFILES_ALL) down
 
 # `make logs` -> main adapter; `make logs indextts2` -> worker; `make logs all` -> both.
 logs:
@@ -336,7 +379,7 @@ logs:
 	@if [ "$(LOG_TARGET)" = "indextts2" ]; then \
 	    $(DOCKER_COMPOSE) --profile indextts2 logs -f adapter-tts-indextts2; \
 	elif [ "$(LOG_TARGET)" = "all" ]; then \
-	    $(DOCKER_COMPOSE) $(COMPOSE_PROFILES) logs -f; \
+	    $(DOCKER_COMPOSE) $(COMPOSE_PROFILES_ALL) logs -f; \
 	else \
 	    $(DOCKER_COMPOSE) --profile gpu logs -f adapter-tts; \
 	fi
@@ -349,7 +392,7 @@ all indextts2:
 health:
 	@echo "main adapter (:9880):"
 	@curl -sf http://localhost:9880/health && echo "" || echo "FAIL"
-	@if [ "$(INDEXTTS2_INSTALLED)" = "yes" ]; then \
+	@if [ "$(INDEXTTS2_READY)" = "yes" ]; then \
 	    echo "indextts2 worker (:9881):"; \
 	    curl -sf http://localhost:9881/health && echo "" || echo "FAIL"; \
 	fi

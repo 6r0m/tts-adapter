@@ -20,6 +20,37 @@
 | Voice design from description | no - use Qwen3 VoiceDesign |
 | Batch generation | no |
 
+## Docker image scope: local-dev only, NOT a release artifact
+
+`Dockerfile.indextts2` is a **thin local-dev image**. It does NOT bake the
+torch/CUDA/transformers stack into image layers. Instead it bind-mounts the
+host's `vendor/index-tts/.venv/` (built by `make install-indextts2`) into the
+container.
+
+This means:
+
+- **Image size is ~3 GB** instead of ~12 GB
+- **Build time is ~1.5 min** instead of ~30 min
+- **Single source of truth** for the vendor venv lives on the host
+- **Coupling:** the image requires `make install-indextts2` to have run
+  on the host, AND the host's Python ABI / glibc version must match the
+  container base (Ubuntu 22.04 / glibc 2.35 in both)
+
+**Not suitable for:** CI artifacts, registry-pushed images, cross-host
+deployment, prod. For those, switch to a self-contained image that does
+`uv sync` of the vendor inside the build (the original Phase A.1 design;
+preserved in git history). Defer that until you actually need a portable
+image.
+
+Quick smoke test the bind-mount worked correctly:
+
+```
+make verify-indextts2-docker
+```
+
+Catches `.pth`-relativization failures, ABI mismatches, and missing CUDA
+libs in <30 s, before you wait through `make up` and a real `/load`.
+
 ## Why a separate worker process
 
 IndexTTS2 upstream pins `transformers==4.52.1`, `torch==2.8.*`, optional `deepspeed==0.17.1`. Our adapter pins `qwen-tts` which requires `transformers==4.57.3`. **They cannot coexist in one Python environment.** So IndexTTS2 runs as its own process in `vendor/index-tts/.venv/`, and the main adapter forwards requests over HTTP via `IndexTTS2RemoteEngine`.

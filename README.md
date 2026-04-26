@@ -182,21 +182,19 @@ curl http://localhost:9880/health
 
 ## Engines
 
-| Engine | Status | Description |
-|--------|--------|-------------|
-| [Qwen3-TTS](docs/engines/qwen3/README.md) | Ready | 1.7B/0.6B with voice cloning, preset speakers, instructions |
-| [IndexTTS2](docs/engines/indextts2/README.md) | WIP (isolated worker design) | Emotional voice cloning - runs as a separate process due to upstream dep pins (see [todo/engine_install_and_switch.md](todo/engine_install_and_switch.md)) |
+`tts-adapter` is **one public API + Web UI** at `http://localhost:9880`. Qwen3 runs in-process as the default. Some engines (e.g. IndexTTS2) have incompatible dependency stacks and run as **optional isolated workers** behind the same API; clients only ever talk to the main adapter. See [Architecture](docs/architecture.md) for the full mental model.
 
-**Promotion criterion for IndexTTS2 -> Ready:** `make install-indextts2 && make run-indextts2 && make serve` followed by a `/tts/clone` request with `emotion_text` returns `200 audio/wav`.
+| Engine | Status | How it runs | Description |
+|--------|--------|-------------|-------------|
+| [Qwen3-TTS](docs/engines/qwen3/README.md) | Ready | In-process | 1.7B/0.6B preset speakers, voice cloning, `instruct` style |
+| [IndexTTS2](docs/engines/indextts2/README.md) | Ready (local/Docker path; requires installed worker) | Isolated worker on `:9881` | Emotional voice cloning (audio / text / 8-vector + alpha) |
 
 ### Adding New Engines
 
-1. Create `tts_adapter/engines/new_engine.py`
-2. Implement `TTSEngine` protocol
-3. Register in `engines/__init__.py`
-4. Document in `docs/engines/`
+- Dependency-compatible engine -> implement `TTSEngine`, register in `engines/__init__.py`, done.
+- Dependency-incompatible engine -> add a worker FastAPI app in `scripts/<name>/serve.py`, a thin `<Name>RemoteEngine` HTTP forwarder, a worker Dockerfile, and a profile-gated compose service. Cross-engine `/model/switch` handles the rest.
 
-See [Architecture](docs/architecture.md) for details.
+Full recipe in [docs/architecture.md#adding-a-new-engine](docs/architecture.md#adding-a-new-engine).
 
 ## License
 
