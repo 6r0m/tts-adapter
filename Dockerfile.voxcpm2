@@ -56,7 +56,8 @@ ARG UID=10001
 RUN useradd -m -u ${UID} -s /bin/bash ${USER} \
  && install -d -o ${UID} -g ${UID} \
        /work /work/vendor /work/models /work/scripts/voxcpm2 /work/tts_adapter \
-       /home/${USER}/.cache/huggingface /home/${USER}/.cache/numba
+       /home/${USER}/.cache/huggingface /home/${USER}/.cache/numba \
+       /home/${USER}/.cache/torchinductor /home/${USER}/.cache/triton
 
 # Worker script + the two cross-venv-safe helper modules from the main adapter.
 # These are TINY (a few KB) - everything heavy lives in the bind-mounted venv.
@@ -67,6 +68,8 @@ COPY --chown=${UID}:${UID} tts_adapter/gpu_utils.py /work/tts_adapter/gpu_utils.
 
 ENV HF_HOME=/home/app/.cache/huggingface \
     NUMBA_CACHE_DIR=/home/app/.cache/numba \
+    TORCHINDUCTOR_CACHE_DIR=/home/app/.cache/torchinductor \
+    TRITON_CACHE_DIR=/home/app/.cache/triton \
     TTS_VOXCPM2_MODEL_DIR=/work/vendor/voxcpm/checkpoints/VoxCPM2 \
     TTS_VOXCPM2_PORT=9882 \
     TTS_VOXCPM2_LOAD_DENOISER=false

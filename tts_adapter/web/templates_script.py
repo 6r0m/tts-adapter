@@ -438,11 +438,12 @@ function switchTab(tab) {
     document.getElementById('result').style.display = 'none';
 }
 
-// Default starter for the emotion text field - shown when the user lands on
-// the Clone tab on an engine that supports text-emotion. Visible as both the
-// placeholder and as the actual value if the field is empty - so a user can
-// hit Generate immediately and get an emotional clone, then edit from there.
+// Default starter for the emotion text field - applied ONCE per engine after
+// switching, never on subsequent /health polls. The engine name we last
+// auto-applied for (or null) - lets the user clear the field or switch to
+// "none" mode without the next poll fighting them.
 const EMOTION_TEXT_DEFAULT = 'very excited';
+let emotionDefaultAppliedForEngine = null;
 
 function updateEmotionControls(data = serverInfo) {
     const controls = document.getElementById('emotion-controls');
@@ -459,21 +460,29 @@ function updateEmotionControls(data = serverInfo) {
     // can't pick a mode the API would reject with 400.
     filterEmotionModeOptions(data?.emotion_modes || []);
 
-    // Default-on for text emotion: if the engine supports text mode AND the
-    // dropdown is currently 'none' (initial state OR engine just changed
-    // from a non-emotional engine), auto-select 'text' so users immediately
-    // see an emotional-clone-ready form.
-    if (supported && (data?.emotion_modes || []).includes('text')) {
+    // One-shot default: apply emotion-text starter ONCE per engine session,
+    // then never again until the engine changes. Without this guard, every
+    // 3 s health poll would re-apply the default and fight the user who
+    // intentionally chose mode='none' or cleared the text field.
+    const engine = data?.engine || '';
+    const shouldApplyDefault =
+        supported
+        && (data?.emotion_modes || []).includes('text')
+        && emotionDefaultAppliedForEngine !== engine;
+
+    if (shouldApplyDefault) {
         const modeSelect = document.getElementById('clone-emotion-mode');
         if (modeSelect && modeSelect.value === 'none') {
             modeSelect.value = 'text';
         }
-        // Pre-fill the example value if the field is empty (user hasn't
-        // typed yet). Don't override existing user input.
         const textInput = document.getElementById('clone-emotion-text');
-        if (textInput && !textInput.value) {
-            textInput.value = EMOTION_TEXT_DEFAULT;
+        if (textInput) {
+            textInput.placeholder = EMOTION_TEXT_DEFAULT;
+            if (!textInput.value) {
+                textInput.value = EMOTION_TEXT_DEFAULT;
+            }
         }
+        emotionDefaultAppliedForEngine = engine;
     }
 
     updateEmotionModePanels();

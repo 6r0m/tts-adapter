@@ -143,6 +143,13 @@ TRANSLATIONS = {
         "param.topp_tip": "Порог отбора вариантов (0.1–1.0, обычно 1.0). Ниже (0.7–0.9): только лучшие варианты, чище звук — для продакшн-озвучки. При 1.0: все варианты, максимум естественности — для разговорного стиля.",
         "param.rep_tip": "Защита от повторов (1.0–2.0, обычно 1.05). При 1.0: без защиты. 1.1–1.3: убирает заикания и повторяющиеся звуки — если слышите артефакты. Выше 1.5: может исказить речь, используйте осторожно.",
         "param.tokens_tip": "Макс. длина аудио (256–4096, обычно 2048). 256 ≈ 5–10 сек, 2048 ≈ 1–2 мин. Увеличьте (3072–4096) для длинных абзацев. Уменьшите для коротких фраз — быстрее генерация.",
+        # Aliases keyed by the actual GenerationParam.key so localizedParamLabel()
+        # finds them. The legacy *_tip keys above are kept for the static
+        # Advanced Help popup that pre-dates per-engine generation_params.
+        "param.repetition_penalty": "Штраф повтора",
+        "param.repetition_penalty_tip": "Защита от повторов (1.0–2.0, обычно 1.05). При 1.0: без защиты. 1.1–1.3: убирает заикания и повторяющиеся звуки — если слышите артефакты. Выше 1.5: может исказить речь, используйте осторожно.",
+        "param.max_new_tokens": "Макс. токенов",
+        "param.max_new_tokens_tip": "Макс. длина аудио (256–4096, обычно 2048). 256 ≈ 5–10 сек, 2048 ≈ 1–2 мин. Увеличьте (3072–4096) для длинных абзацев. Уменьшите для коротких фраз — быстрее генерация.",
         # VoxCPM2-specific generation params (engine declares these)
         "param.cfg_value": "Сила следования стилю (CFG)",
         "param.cfg_value_tip": "Управление стилем/текстом (1.0–4.0, обычно 2.0). Ниже (1.2–1.8): более естественный голос, слабее реакция на тег эмоции. Выше (2.5–3.5): сильнее следует тегу эмоции, может звучать резче. Меняйте по чуть-чуть.",
@@ -233,6 +240,11 @@ TRANSLATIONS = {
         "param.cfg_value_tip": "Style/text adherence (1.0–4.0, default 2.0). Lower (1.2–1.8): more natural voice, weaker reaction to the emotion tag. Higher (2.5–3.5): follows the emotion tag more strongly, may sound harsher. Adjust in small steps.",
         "param.inference_timesteps": "Diffusion Steps",
         "param.inference_timesteps_tip": "Diffusion steps during generation (4–30, default 10 — VoxCPM2 authors' recommendation). 6–8: ~25% faster, acceptable for drafts. 10: best quality/speed tradeoff. 15–20: cleaner final audio, slower.",
+        # Aliases keyed by GenerationParam.key for localizedParamLabel() lookup.
+        "param.repetition_penalty": "Repetition Penalty",
+        "param.repetition_penalty_tip": "Penalize repeated tokens (1.0–2.0, default 1.05). At 1.0: no penalty. 1.1–1.3: removes stutters / repeating sounds. Above 1.5: may distort speech.",
+        "param.max_new_tokens": "Max Tokens",
+        "param.max_new_tokens_tip": "Max audio length (256–4096, default 2048). 256 ≈ 5–10 sec, 2048 ≈ 1–2 min. Raise (3072–4096) for long paragraphs; lower for short phrases (faster generation).",
         "help.close_params": "Close parameter guide",
         "help.temp_desc": "Voice variety (0.01–2.0). Lower (0.3–0.7) — stable even voice for narration and news. Higher (1.0–1.5) — lively expressive for characters and ads. Above 1.5 may sound unnatural.",
         "help.topk_desc": "Pronunciation options (1–200). Lower (10–30) — clear predictable voice for announcements. Higher (80–150) — richer intonation for podcasts and storytelling.",
