@@ -73,14 +73,27 @@ function updateStatusText() {
     document.title = `${t('app.title')} — ${modelName} (${capText})`;
 }
 
+// Pick the language to auto-select when populating dropdowns.
+// Priority:
+//   1. Keep user's previous selection if still supported AND engine didn't change.
+//   2. Else PREFERRED_LANGUAGE ('Russian') if supported.
+//   3. Else 'English' if supported (sensible Western fallback for non-Russian users).
+//   4. Else the first supported language (last resort - keeps the dropdown valid).
+function chooseLanguage(supportedLanguages, previousValue, engineChanged) {
+    if (previousValue && supportedLanguages.includes(previousValue) && !engineChanged) {
+        return previousValue;
+    }
+    if (supportedLanguages.includes(PREFERRED_LANGUAGE)) {
+        return PREFERRED_LANGUAGE;
+    }
+    if (supportedLanguages.includes('English')) {
+        return 'English';
+    }
+    return supportedLanguages[0];
+}
+
 // SOT for language options is the server. Each /health poll re-syncs all
 // three language <select>s with engine.supported_languages.
-//
-// Default selection rule:
-//   1. If user previously picked a language and it's still supported -> keep it.
-//   2. Else if PREFERRED_LANGUAGE ('Russian') is supported -> select it.
-//   3. Else select the first supported language and show inline hint banner
-//      explaining Russian isn't available with the current engine.
 function populateLanguageDropdowns(supportedLanguages, previousEngine) {
     if (!supportedLanguages || !supportedLanguages.length) return;
 
@@ -99,16 +112,7 @@ function populateLanguageDropdowns(supportedLanguages, previousEngine) {
             select.appendChild(opt);
         });
 
-        // Pick the new selection per the rule above.
-        let chosen;
-        if (previousValue && supportedLanguages.includes(previousValue) && !engineChanged) {
-            chosen = previousValue;
-        } else if (supportedLanguages.includes(PREFERRED_LANGUAGE)) {
-            chosen = PREFERRED_LANGUAGE;
-        } else {
-            chosen = supportedLanguages[0];
-        }
-        select.value = chosen;
+        select.value = chooseLanguage(supportedLanguages, previousValue, engineChanged);
     });
 
     // Inline hint when the preferred language isn't available on the
@@ -134,11 +138,16 @@ function updateLanguageFallbackHint(supportedLanguages) {
             status.parentNode.insertBefore(banner, status.nextSibling);
         }
     }
-    const hintTemplate = t('lang.unsupported_hint');
-    const fallback = supportedLanguages[0] || '?';
-    banner.textContent = hintTemplate
+    // Read the actual currently-selected language from the main dropdown so
+    // the hint reflects whatever the user is about to send (not just the
+    // first supported language). Falls back to chooseLanguage() if the
+    // dropdown isn't populated yet.
+    const select = document.getElementById('language');
+    const currentlySelected = (select && select.value)
+        || chooseLanguage(supportedLanguages, '', false);
+    banner.textContent = t('lang.unsupported_hint')
         .replace('{engine}', serverInfo.engine || '?')
-        .replace('{lang}', fallback)
+        .replace('{lang}', currentlySelected)
         .replace('{preferred}', PREFERRED_LANGUAGE);
 }
 
