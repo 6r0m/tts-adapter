@@ -225,10 +225,23 @@ install-voxcpm2:
 	@echo "==> [3/4] VoxCPM2 checkpoints (~10 GB, idempotent resume)..."
 	uv run python scripts/voxcpm2/download_model.py
 	@echo ""
-	@echo "==> [4/4] verify host vendor venv import + checkpoint load path..."
+	@echo "==> [4/5] patch editable .pth to relative path (cross-host portable)..."
+	@# uv writes the host's absolute path into __editable__.voxcpm-*.pth.
+	@# That breaks bind-mounting the venv into Docker (container sees /work/...,
+	@# not the host path). Replace with a relative path that points at
+	@# vendor/voxcpm/src from any mount target. Works for host AND container.
+	@PTH_FILE=$$(ls vendor/voxcpm/.venv/lib/python3.10/site-packages/__editable__.voxcpm-*.pth 2>/dev/null | head -1); \
+	    if [ -n "$$PTH_FILE" ] && [ -f "$$PTH_FILE" ]; then \
+	        echo '../../../../src' > "$$PTH_FILE"; \
+	        echo "patched: $$PTH_FILE -> ../../../../src"; \
+	    else \
+	        echo "WARNING: no __editable__.voxcpm-*.pth found - import may fail in Docker"; \
+	    fi
+	@echo ""
+	@echo "==> [5/5] verify host vendor venv import + checkpoint load path..."
 	@cd vendor/voxcpm && env -u VIRTUAL_ENV .venv/bin/python -c \
 	    "import voxcpm; print('  host import OK:', voxcpm.__file__)" \
-	    || ( echo "FATAL: vendor venv import broke - check uv pip install output above"; exit 1 )
+	    || ( echo "FATAL: vendor venv import broke after .pth patch - check above"; exit 1 )
 	@echo ""
 	@echo "============================================================"
 	@echo "VoxCPM2 install complete. Add to .env:"

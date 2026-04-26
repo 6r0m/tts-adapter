@@ -110,8 +110,11 @@ class VoxCPM2Settings(BaseSettings):
     )
 
     url: str = "http://localhost:9882"
-    timeout: float = 180.0
-    load_timeout: float = 120.0
+    # 300 s tolerates: cold torch.compile on first call (~30 s) + upstream's
+    # retry_badcase loop (up to 3x infer time) + long inputs. Override via
+    # TTS_VOXCPM2_TIMEOUT once you've seen steady-state RTF on your hardware.
+    timeout: float = 300.0
+    load_timeout: float = 240.0
     health_timeout: float = 2.0
 
 

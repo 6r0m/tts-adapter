@@ -438,6 +438,12 @@ function switchTab(tab) {
     document.getElementById('result').style.display = 'none';
 }
 
+// Default starter for the emotion text field - shown when the user lands on
+// the Clone tab on an engine that supports text-emotion. Visible as both the
+// placeholder and as the actual value if the field is empty - so a user can
+// hit Generate immediately and get an emotional clone, then edit from there.
+const EMOTION_TEXT_DEFAULT = 'very excited';
+
 function updateEmotionControls(data = serverInfo) {
     const controls = document.getElementById('emotion-controls');
     if (!controls) return;
@@ -452,6 +458,24 @@ function updateEmotionControls(data = serverInfo) {
     // supports. VoxCPM2 (text-only) hides "audio" and "vector" so the user
     // can't pick a mode the API would reject with 400.
     filterEmotionModeOptions(data?.emotion_modes || []);
+
+    // Default-on for text emotion: if the engine supports text mode AND the
+    // dropdown is currently 'none' (initial state OR engine just changed
+    // from a non-emotional engine), auto-select 'text' so users immediately
+    // see an emotional-clone-ready form.
+    if (supported && (data?.emotion_modes || []).includes('text')) {
+        const modeSelect = document.getElementById('clone-emotion-mode');
+        if (modeSelect && modeSelect.value === 'none') {
+            modeSelect.value = 'text';
+        }
+        // Pre-fill the example value if the field is empty (user hasn't
+        // typed yet). Don't override existing user input.
+        const textInput = document.getElementById('clone-emotion-text');
+        if (textInput && !textInput.value) {
+            textInput.value = EMOTION_TEXT_DEFAULT;
+        }
+    }
+
     updateEmotionModePanels();
 }
 
@@ -719,6 +743,29 @@ function getAdvancedSettings(prefix) {
 // qwen-style fields when voxcpm2 is selected.
 const ADVANCED_PREFIXES = ['simple', 'design', 'clone'];
 
+// Localize a generation param: prefer i18n keys (param.<key>, param.<key>_tip)
+// when defined for the current UI language; fall back to engine-provided
+// English label/help. Lets engine code stay i18n-unaware while the UI
+// translates known params (temperature, cfg_value, etc.).
+function localizedParamLabel(p) {
+    const key = `param.${p.key}`;
+    const translated = t(key);
+    return (translated && translated !== key) ? translated : (p.label || p.key);
+}
+
+function localizedParamTip(p) {
+    const key = `param.${p.key}_tip`;
+    const translated = t(key);
+    return (translated && translated !== key) ? translated : (p.help || '');
+}
+
+// Render integer params without trailing ".0" (server sends `default: 50.0`
+// for top_k because Pydantic GenerationParam.default is float).
+function formatParamValue(p, value) {
+    if (p.type === 'integer') return String(parseInt(value, 10));
+    return String(value);
+}
+
 function populateGenerationParams(params, previousEngine) {
     params = Array.isArray(params) ? params : [];
     // Engine change => DON'T preserve user values for shared keys. qwen3 and
@@ -755,7 +802,7 @@ function populateGenerationParams(params, previousEngine) {
             const label = document.createElement('label');
             const id = prefix + '-' + p.key;
             label.htmlFor = id;
-            label.textContent = p.label || p.key;
+            label.textContent = localizedParamLabel(p);
 
             const input = document.createElement('input');
             input.type = 'number';
@@ -767,8 +814,9 @@ function populateGenerationParams(params, previousEngine) {
             // Use the user's previous value if still relevant, otherwise the engine default.
             input.value = previousValues[p.key] !== undefined
                 ? previousValues[p.key]
-                : String(p.default);
-            if (p.help) input.title = p.help;
+                : formatParamValue(p, p.default);
+            const tip = localizedParamTip(p);
+            if (tip) input.title = tip;
 
             cell.appendChild(label);
             cell.appendChild(input);
@@ -778,30 +826,37 @@ function populateGenerationParams(params, previousEngine) {
 }
 
 function openAdvancedHelp() {
+    // Pull from /health.generation_params (active engine's actual knobs +
+    // their server-provided help text) - NOT a hardcoded qwen-style list.
+    // VoxCPM2 active -> popup shows cfg_value/inference_timesteps with
+    // VoxCPM2's hints, NOT Temperature/Top-K with qwen3 hints.
     const container = document.getElementById('advanced-help-content');
     container.innerHTML = '';
     const intro = document.createElement('p');
     intro.textContent = t('help.params_intro');
     container.appendChild(intro);
 
-    const ul = document.createElement('ul');
-    ul.className = 'param-help-list';
-    const params = [
-        ['param.temperature', '0.9', 'help.temp_desc'],
-        ['param.top_k', '50', 'help.topk_desc'],
-        ['param.top_p', '1.0', 'help.topp_desc'],
-        ['param.rep_penalty', '1.05', 'help.rep_desc'],
-        ['param.max_tokens', '2048', 'help.tokens_desc'],
-    ];
-    params.forEach(([nameKey, def, descKey]) => {
-        const li = document.createElement('li');
-        const strong = document.createElement('strong');
-        strong.textContent = t(nameKey);
-        li.appendChild(strong);
-        li.appendChild(document.createTextNode(` (${def}) — ${t(descKey)}`));
-        ul.appendChild(li);
-    });
-    container.appendChild(ul);
+    const params = serverInfo?.generation_params || [];
+    if (params.length === 0) {
+        const empty = document.createElement('p');
+        empty.textContent = t('help.no_params') || '—';
+        container.appendChild(empty);
+    } else {
+        const ul = document.createElement('ul');
+        ul.className = 'param-help-list';
+        params.forEach(p => {
+            const li = document.createElement('li');
+            const strong = document.createElement('strong');
+            strong.textContent = localizedParamLabel(p);
+            li.appendChild(strong);
+            const def = (p.default !== undefined && p.default !== null)
+                ? formatParamValue(p, p.default) : '';
+            const help = localizedParamTip(p);
+            li.appendChild(document.createTextNode(` (${def}) — ${help}`));
+            ul.appendChild(li);
+        });
+        container.appendChild(ul);
+    }
 
     document.getElementById('advanced-help-overlay').classList.add('active');
 }

@@ -423,13 +423,17 @@ def tts(req: TTSRequest) -> Response:
     """Generate WAV audio from text."""
     engine = get_engine()
     _validate_language(engine, req.language, text=req.text)
-    wav_bytes = engine.synthesize(
-        text=req.text,
-        language=req.language,
-        speaker=req.speaker,
-        instruct=req.instruct,
-        **req.generation.to_kwargs(),
-    )
+    try:
+        wav_bytes = engine.synthesize(
+            text=req.text,
+            language=req.language,
+            speaker=req.speaker,
+            instruct=req.instruct,
+            **req.generation.to_kwargs(),
+        )
+    except RuntimeError as e:
+        log.warning("synthesize failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
     return Response(content=wav_bytes, media_type="audio/wav")
 
 
@@ -743,17 +747,25 @@ async def tts_clone(
             cfg_value=cfg_value, inference_timesteps=inference_timesteps,
         ),
     )
-    wav_bytes = engine.synthesize_clone(
-        text=text,
-        reference_audio=audio_bytes,
-        language=language,
-        reference_text=reference_text if reference_text else None,
-        emotion_audio=emotion_audio_bytes,
-        emotion_text=emotion_text or None,
-        emotion_vector=vec,
-        emotion_alpha=emotion_alpha,
-        **gen_kwargs,
-    )
+    try:
+        wav_bytes = engine.synthesize_clone(
+            text=text,
+            reference_audio=audio_bytes,
+            language=language,
+            reference_text=reference_text if reference_text else None,
+            emotion_audio=emotion_audio_bytes,
+            emotion_text=emotion_text or None,
+            emotion_vector=vec,
+            emotion_alpha=emotion_alpha,
+            **gen_kwargs,
+        )
+    except RuntimeError as e:
+        # Worker timeout / connection / 5xx propagate here from RemoteEngine.
+        # Convert to JSON 502 so the UI can parse + display the message
+        # (otherwise FastAPI returns plain "Internal Server Error" text and
+        # the browser fails JSON.parse).
+        log.warning("synthesize_clone failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
     return Response(content=wav_bytes, media_type="audio/wav")
 
 
@@ -786,12 +798,16 @@ def tts_design(
         engine,
         _collect_gen_kwargs(temperature, top_k, top_p, repetition_penalty, max_new_tokens),
     )
-    wav_bytes = engine.synthesize_design(
-        text=text,
-        instruct=instruct,
-        language=language,
-        **gen_kwargs,
-    )
+    try:
+        wav_bytes = engine.synthesize_design(
+            text=text,
+            instruct=instruct,
+            language=language,
+            **gen_kwargs,
+        )
+    except RuntimeError as e:
+        log.warning("synthesize_design failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
     return Response(content=wav_bytes, media_type="audio/wav")
 
 

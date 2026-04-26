@@ -30,10 +30,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 #   - tini: clean PID 1 / signal handling
 #   - curl: healthcheck
 #   - libsndfile1 + ffmpeg: VoxCPM2 uses soundfile + librosa for audio I/O
+#   - gcc + python3.10-dev: torch.compile (optimize=True) JIT-compiles kernels
+#     via triton, which shells out to a C compiler. Without these, /load fails
+#     with "Failed to find C compiler". OPTIMIZE=true is the recommended
+#     production mode (~2-3x faster steady-state inference).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 \
     python3.10-distutils \
     python3.10-venv \
+    python3.10-dev \
+    gcc \
+    g++ \
     tini \
     curl \
     ca-certificates \
@@ -49,7 +56,7 @@ ARG UID=10001
 RUN useradd -m -u ${UID} -s /bin/bash ${USER} \
  && install -d -o ${UID} -g ${UID} \
        /work /work/vendor /work/models /work/scripts/voxcpm2 /work/tts_adapter \
-       /home/${USER}/.cache/huggingface
+       /home/${USER}/.cache/huggingface /home/${USER}/.cache/numba
 
 # Worker script + the two cross-venv-safe helper modules from the main adapter.
 # These are TINY (a few KB) - everything heavy lives in the bind-mounted venv.
@@ -59,6 +66,7 @@ COPY --chown=${UID}:${UID} tts_adapter/audio_utils.py /work/tts_adapter/audio_ut
 COPY --chown=${UID}:${UID} tts_adapter/gpu_utils.py /work/tts_adapter/gpu_utils.py
 
 ENV HF_HOME=/home/app/.cache/huggingface \
+    NUMBA_CACHE_DIR=/home/app/.cache/numba \
     TTS_VOXCPM2_MODEL_DIR=/work/vendor/voxcpm/checkpoints/VoxCPM2 \
     TTS_VOXCPM2_PORT=9882 \
     TTS_VOXCPM2_LOAD_DENOISER=false
