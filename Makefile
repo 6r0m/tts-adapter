@@ -199,10 +199,12 @@ download-voxcpm2:
 # deps, download checkpoints. Idempotent - safe to re-run.
 # Why two processes: see docs/engines/voxcpm2/README.md.
 #
-# Pin a specific upstream ref for reproducible installs:
-#   make install-voxcpm2 VOXCPM_REF=v1.0.0
-# Defaults to `main` for exploration; pin before relying on it.
-VOXCPM_REF ?= main
+# VOXCPM_REF is the pinned upstream commit - acts as the lockfile for
+# vendor/voxcpm/ (which has no .git of its own; see the rm -rf below).
+# To bump: override on the command line (`make install-voxcpm2 VOXCPM_REF=<sha-or-tag>`)
+# or edit the default below. Current pin recorded from OpenBMB/VoxCPM main on
+# 2026-05-12; was the working state before vendor/voxcpm/.git was dropped.
+VOXCPM_REF ?= cd79a647fab96f11a1c7f350cec11385b011ede4
 
 install-voxcpm2:
 	@echo "==> [1/4] vendor/voxcpm (snapshot at ref=$(VOXCPM_REF))..."
