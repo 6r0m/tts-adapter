@@ -13,7 +13,7 @@ name: tts
 networks:
   render-network:
     name: render-network
-    driver: bridge
+    external: true
 
 # GPU reservation block (shared via YAML anchor)
 x-gpu: &gpu
